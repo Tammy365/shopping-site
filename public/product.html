@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Product Details</title>
+  <link rel="stylesheet" href="/css/styles.css"/>
+</head>
+<body>
+  <!-- 购物车开关（与你的静态结构一致） -->
+  <input type="checkbox" id="cart-toggle" hidden>
+
+  <header>
+    <h1>Shopping Site</h1>
+    <nav>
+      <!-- 顶部导航（固定顺序：Home, Fruits, Drinks；从 DB 读取再按顺序渲染） -->
+      <ul id="nav-categories"></ul>
+    </nav>
+    <label for="cart-toggle" class="cart-icon">🛒</label>
+  </header>
+
+  <main>
+    <!-- 商品详情主体：图片 + 信息（与你的 CSS 类名完全对齐） -->
+    <section class="product-details" id="product-details">
+      <!-- 将由脚本动态填充 -->
+    </section>
+
+    <!-- 面包屑（Home > Category > Product） -->
+    <div class="breadcrumb" id="breadcrumb"></div>
+  </main>
+
+  <!-- 购物车侧栏外壳（Phase 3 再实现逻辑） -->
+  <aside class="shopping-list">
+    <h3>Shopping Cart</h3>
+    <div class="cart-items" id="cart-items"></div>
+    <div class="cart-total">
+      <span>Total:</span>
+      <span class="total-price" id="total-price">HK$0.00</span>
+    </div>
+    <div class="cart-actions">
+      <button class="checkout">Checkout</button>
+    </div>
+  </aside>
+
+  <footer>
+    <p>© 2026 My Shopping Site. All rights reserved.</p>
+  </footer>
+
+  <!-- ✅ Phase 3：先加载购物车脚本 -->
+  <script src="/js/cart.js"></script>
+
+  <!-- 页面脚本（保留你的 DOM 渲染逻辑，并在渲染后绑定按钮） -->
+  <script>
+    // ===== 工具函数 =====
+    function $(sel){ return document.querySelector(sel); }
+    function q(name){ return new URLSearchParams(location.search).get(name); }
+
+    // 固定显示顺序（导航显示为 Home, Fruits, Drinks）
+    const NAV_ORDER = ['Fruits', 'Drinks'];
+
+    // 读取所有分类，返回 Map(name -> categoryObj)
+    async function fetchCategoriesMap(){
+      const res = await fetch('/api/categories');
+      const cats = await res.json();
+      return new Map(cats.map(c => [c.name, c]));
+    }
+
+    // 渲染顶部导航（固定顺序，但数据从 DB 来）
+    async function renderNav(){
+      const map = await fetchCategoriesMap();
+      const ul = $('#nav-categories');
+
+      const html = [
+        `<li><a href="/">Home</a></li>`,
+        ...NAV_ORDER
+          .filter(name => map.has(name))
+          .map(name => {
+            const c = map.get(name);
+            return `<li><a href="/?catid=${c.catid}">${c.name}</a></li>`;
+          })
+      ];
+
+      ul.innerHTML = html.join('');
+      return map; // 返回供后续渲染面包屑使用
+    }
+
+    // 渲染商品详情
+    async function renderProduct(){
+      const pid = q('pid');
+      if(!pid){
+        $('#product-details').innerText = 'No product id';
+        return;
+      }
+
+      // 拉取单个产品数据
+      const resp = await fetch(`/api/product?pid=${pid}`);
+      const p = await resp.json();
+      if(p.error){
+        $('#product-details').innerText = p.error;
+        return;
+      }
+
+      // 解析图片字段（后端把 {big, small} 以 JSON 字符串存到 image）
+      const img = p.image ? JSON.parse(p.image) : null;
+
+      // 获取分类映射，找出该产品的分类对象（用于“返回分类”和面包屑显示）
+      const map = await fetchCategoriesMap();
+      const catObj = [...map.values()].find(c => String(c.catid) === String(p.catid));
+      const catName = catObj ? catObj.name : 'Category';
+      const catHref  = catObj ? `/?catid=${catObj.catid}` : '/';
+
+      // 使用 <img> 标签渲染大图
+      $('#product-details').innerHTML = `
+        <div class="product-image">
+          ${img ? `<img src="${img.big}" alt="${p.name}"/>` : ''}
+        </div>
+        <div class="product-info">
+          <h2>${p.name}</h2>
+          <p class="price">HK$${Number(p.price).toFixed(2)}</p>
+          <p class="description">${p.description || ''}</p>
+          <div class="quantity-controls">
+            <input type="number" min="1" value="1" class="quantity">
+            <button class="add-to-cart">Add to Cart</button>
+          </div>
+          <p class="category">Back to Category: <a href="${catHref}">${catName}</a></p>
+        </div>
+      `;
+
+      // 面包屑
+      $('#breadcrumb').innerHTML = `
+        <a href="/">Home</a> > <a href="${catHref}">${catName}</a> > <span>${p.name}</span>
+      `;
+
+      // ✅ Phase 3 关键：渲染完成后绑定 “Add to Cart” 按钮
+      if (window.bindProductPageAdd) window.bindProductPageAdd(pid);
+    }
+
+    // 启动
+    (async function init(){
+      await renderNav();
+      await renderProduct();
+    })();
+  </script>
+</body>
+</html>

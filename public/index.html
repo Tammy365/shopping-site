@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Shopping Website</title>
+  <link rel="stylesheet" href="css/styles.css"/>
+</head>
+<body>
+  <!-- 购物车开关（与原静态结构一致） -->
+  <input type="checkbox" id="cart-toggle" hidden>
+
+  <header>
+    <h1>Shopping Site</h1>
+    <nav>
+      <!-- 动态分类导航（含 Home） -->
+      <ul id="nav-categories"></ul>
+    </nav>
+    <!-- 右上角购物车图标 -->
+    <label for="cart-toggle" class="cart-icon">🛒</label>
+  </header>
+
+  <main>
+    <section class="welcome-section">
+      <h2 class="welcome-title">Welcome to My Store!</h2>
+      <p class="welcome-description">Browse by category or check out our featured items below. Find your shopping cart at the upper right corner.</p>
+    </section>
+
+    <h3 class="featured-title">Products</h3>
+    <!-- 产品列表（按你的 .product-list 样式渲染） -->
+    <section class="product-list" id="product-list"></section>
+  </main>
+
+  <!-- 购物车侧栏外壳（Phase 3 再实现逻辑） -->
+  <aside class="shopping-list">
+    <h3>Shopping Cart</h3>
+    <div class="cart-items" id="cart-items"><!-- Phase 3 才动态填充 --></div>
+    <div class="cart-total">
+      <span>Total:</span>
+      <span class="total-price" id="total-price">HK$0.00</span>
+    </div>
+    <div class="cart-actions">
+      <button class="checkout">Checkout</button>
+    </div>
+  </aside>
+
+  <footer>
+    <p>© 2026 My Shopping Site. All rights reserved.</p>
+  </footer>
+
+  <script src="js/cart.js"></script> <!--先购物车，再渲染列表并绑定按钮）-->
+  <script src="js/main.js"></script>
+</body>
+</html>
