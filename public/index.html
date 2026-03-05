@@ -68,48 +68,9 @@
   <script src="js/cart.js"></script>
   <script src="js/main.js"></script>
 
-  <!-- ✅ 仅修“按钮可点击”的 authbar 逻辑；其余不变 -->
-  <script>
-    function escapeHTML(s=''){
-      return String(s).replace(/[&<>"']/g, m => ({
-        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-      }[m]));
-    }
-    async function refreshAuthBar(){
-      try{
-        const res = await fetch('/api/me');
-        const me  = await res.json();
-        const bar = document.getElementById('authbar');
-        if(!bar) return;
+  <script src="js/authbar.js"></script>
 
-        if(me.loggedIn){
-          // ✅ 真实可点击的链接（Admin 仅管理员显示）
-          bar.innerHTML =
-            `Hello, ${escapeHTML(me.email)}${me.admin ? ' (admin)' : ''} · ` +
-            (me.admin ? `<a href="/admin">Admin</a> · ` : ``) +
-            `<a href="/change-password.html">Change Password</a> · ` +
-            `<a href="#" id="logout-link">Logout</a>`;
 
-          const logout = document.getElementById('logout-link');
-          if(logout){
-            logout.addEventListener('click', async (e)=>{
-              e.preventDefault();
-              await fetch('/api/logout', { method:'POST' });
-              location.reload();
-            });
-          }
-        }else{
-          bar.innerHTML = `<a href="/login.html">Login</a> · <a href="/register.html">Register</a>`;
-        }
-      }catch{
-        const bar = document.getElementById('authbar');
-        if(bar) bar.innerHTML = `<a href="/login.html">Login</a> · <a href="/register.html">Register</a>`;
-      }
-    }
-    document.addEventListener('DOMContentLoaded', refreshAuthBar);
-  </script>
-
-  
   <div id="toast" class="toast" aria-live="polite"></div>
 
 </body>
