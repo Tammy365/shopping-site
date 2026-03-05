@@ -1,13 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
   <title>Admin Panel</title>
   <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    /* 仅为退出按钮做个小样式，不影响你现有CSS */
+    .admin-topbar {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: .75rem 1rem; background:#f7f7f7; border-bottom:1px solid #eee;
+    }
+    .admin-topbar .who {
+      font-size: .95rem; color:#555;
+    }
+    .admin-topbar .actions {
+      display: flex; gap: .5rem; align-items: center;
+    }
+    .btn-logout{
+      background:#e74c3c; color:#fff; border:none; padding:.4rem .75rem;
+      border-radius:4px; cursor:pointer;
+    }
+    .btn-logout:hover{ background:#c0392b; }
+  </style>
 </head>
 <body>
   <header><h1>Admin Panel</h1></header>
+
+  <!-- 顶部工具条：显示当前登录状态 + Logout -->
+  <div class="admin-topbar">
+    <div class="who" id="who">Checking login status...</div>
+    <div class="actions">
+      <button id="logout-btn" class="btn-logout" title="Logout">Logout</button>
+    </div>
+  </div>
+
   <main class="admin">
     <section>
       <h2>Manage Categories</h2>
@@ -57,7 +83,7 @@
       <table id="prod-table" border="1" cellpadding="6"></table>
     </section>
   </main>
+
   <script src="/js/admin.js"></script>
 </body>
 </html>
-``
