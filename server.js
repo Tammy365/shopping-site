@@ -90,16 +90,26 @@ function generateToken() {
 // 校验是否为管理员
 function requireAdmin(req, res, next) {
   const token = req.cookies?.auth;
-  if (!token) return res.status(401).json({ error: 'Not logged in' });
+  const wantsHTML =
+    req.accepts(['html','json']) === 'html' || /text\/html/.test(req.get('accept') || '');
+
+  if (!token) {
+    if (wantsHTML) return res.redirect('/login.html'); // 未登录→跳登录页
+    return res.status(401).json({ error: 'Not logged in' }); // 给前端脚本用
+  }
 
   db.get(
-    'SELECT u.userid, u.is_admin FROM sessions s JOIN users u ON s.userid=u.userid WHERE s.token=?',
+    'SELECT u.is_admin FROM sessions s JOIN users u ON s.userid=u.userid WHERE s.token=?',
     [token],
     (err, row) => {
-      if (err || !row) return res.status(401).json({ error: 'Invalid session' });
-      if (row.is_admin !== 1) return res.status(403).json({ error: 'Forbidden' });
-      // 可把用户信息挂到 req 供后续使用
-      req.user = { userid: row.userid, is_admin: row.is_admin === 1 };
+      if (err || !row) {
+        if (wantsHTML) return res.redirect('/login.html');
+        return res.status(401).json({ error: 'Invalid session' });
+      }
+      if (row.is_admin !== 1) {
+        if (wantsHTML) return res.redirect('/login.html');
+        return res.status(403).json({ error: 'Forbidden' });
+      }
       next();
     }
   );
