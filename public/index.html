@@ -5,11 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Shopping Website</title>
   <link rel="stylesheet" href="css/styles.css"/>
+  <style>
+    /* 登录状态条（保持你之前样式，仅用于顶部右上角） */
+    .site-authbar{
+      background:#f7f9ff; border-bottom:1px solid #e5e8ef; color:#2c3e50;
+      font:14px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial;
+    }
+    .site-authbar .wrap{
+      max-width:1100px; margin:0 auto; padding:.5rem 1rem;
+      display:flex; justify-content:flex-end; gap:.75rem; flex-wrap:wrap;
+    }
+    .site-authbar a{ color:#1976D2; text-decoration:none }
+    .site-authbar a:hover{ text-decoration:underline }
+  </style>
 </head>
 <body>
-  <!-- 购物车开关（与原静态结构一致） -->
-  <input type="checkbox" id="cart-toggle" hidden>
+  <!-- ✅ 顶部登录状态条（保留你之前新增的容器） -->
+  <div class="site-authbar">
+    <div class="wrap" id="authbar">Loading…</div>
+  </div>
 
+  <!-- 购物车开关（与你原静态结构一致） -->
+  <input type="checkbox" id="cart-toggle" hidden>
   <header>
     <h1>Shopping Site</h1>
     <nav>
@@ -25,7 +42,6 @@
       <h2 class="welcome-title">Welcome to My Store!</h2>
       <p class="welcome-description">Browse by category or check out our featured items below. Find your shopping cart at the upper right corner.</p>
     </section>
-
     <h3 class="featured-title">Products</h3>
     <!-- 产品列表（按你的 .product-list 样式渲染） -->
     <section class="product-list" id="product-list"></section>
@@ -48,7 +64,49 @@
     <p>© 2026 My Shopping Site. All rights reserved.</p>
   </footer>
 
-  <script src="js/cart.js"></script> <!--先购物车，再渲染列表并绑定按钮）-->
+  <!-- 保持你原来的脚本加载顺序 -->
+  <script src="js/cart.js"></script>
   <script src="js/main.js"></script>
+
+  <!-- ✅ 仅修“按钮可点击”的 authbar 逻辑；其余不变 -->
+  <script>
+    function escapeHTML(s=''){
+      return String(s).replace(/[&<>"']/g, m => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[m]));
+    }
+    async function refreshAuthBar(){
+      try{
+        const res = await fetch('/api/me');
+        const me  = await res.json();
+        const bar = document.getElementById('authbar');
+        if(!bar) return;
+
+        if(me.loggedIn){
+          // ✅ 真实可点击的链接（Admin 仅管理员显示）
+          bar.innerHTML =
+            `Hello, ${escapeHTML(me.email)}${me.admin ? ' (admin)' : ''} · ` +
+            (me.admin ? `<a href="/admin">Admin</a> · ` : ``) +
+            `<a href="/change-password.html">Change Password</a> · ` +
+            `<a href="#" id="logout-link">Logout</a>`;
+
+          const logout = document.getElementById('logout-link');
+          if(logout){
+            logout.addEventListener('click', async (e)=>{
+              e.preventDefault();
+              await fetch('/api/logout', { method:'POST' });
+              location.reload();
+            });
+          }
+        }else{
+          bar.innerHTML = `<a href="/login.html">Login</a> · <a href="/register.html">Register</a>`;
+        }
+      }catch{
+        const bar = document.getElementById('authbar');
+        if(bar) bar.innerHTML = `<a href="/login.html">Login</a> · <a href="/register.html">Register</a>`;
+      }
+    }
+    document.addEventListener('DOMContentLoaded', refreshAuthBar);
+  </script>
 </body>
 </html>

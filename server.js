@@ -13,13 +13,13 @@ import { body, param, query, validationResult } from 'express-validator';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname  = path.dirname(__filename);
 
-const app = express();
+const app     = express();
 const PORT    = process.env.PORT || 3000;
 const IS_PROD = process.env.NODE_ENV === 'production';
 
-// -------- 安全头（含基础 CSP）--------
+// -------- 安全头（含基础 CSP；后续可升级为 nonce 严格策略）--------
 app.disable('x-powered-by');
 app.use((req, res, next) => {
   res.setHeader(
@@ -31,7 +31,7 @@ app.use((req, res, next) => {
       "style-src 'self' 'unsafe-inline'",
       "object-src 'none'",
       "base-uri 'self'",
-      "frame-ancestors 'none'"
+      "frame-ancestors 'none'",
     ].join('; ')
   );
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -64,7 +64,7 @@ function handleValidationErrors(req, res, next) {
   next();
 }
 function escapeHTML(str = '') {
-  return String(str).replace(/[&<>"']/g, (m) => ({
+  return String(str).replace(/[&<>"']/g, m => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[m]));
 }
@@ -77,8 +77,9 @@ function sanitizeProduct(row) {
   };
 }
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
-function wantsHTML(req){
-  return req.accepts(['html','json']) === 'html' || /text\/html/.test(req.get('accept') || '');
+function wantsHTML(req) {
+  const a = req.get('accept') || '';
+  return req.accepts(['html', 'json']) === 'html' || /text\/html/.test(a);
 }
 
 // -------- 登录态/权限中间件 --------
@@ -125,7 +126,7 @@ app.get('/api/csrf', (req, res) => {
     secure: IS_PROD,
     sameSite: 'Strict',
     maxAge: 60 * 60 * 1000,
-    path: '/'
+    path: '/',
   });
   res.json({ csrf });
 });
@@ -148,14 +149,12 @@ app.post('/api/login', upload.none(),
     db.get('SELECT * FROM users WHERE email=?', [email], async (err, user) => {
       if (err) return res.status(500).json({ error: 'DB error' });
       if (!user) return res.json({ error: 'Invalid email or password' });
-
       const ok = await bcrypt.compare(password, user.password);
       if (!ok) return res.json({ error: 'Invalid email or password' });
 
       // 防会话固定：清旧会话 → 发新 token
       db.run('DELETE FROM sessions WHERE userid=?', [user.userid], (e1) => {
         if (e1) return res.status(500).json({ error: 'DB error' });
-
         const token = generateToken();
         db.run('INSERT INTO sessions(token, userid) VALUES (?,?)', [token, user.userid], (e2) => {
           if (e2) return res.status(500).json({ error: 'DB error' });
@@ -163,7 +162,7 @@ app.post('/api/login', upload.none(),
             httpOnly: true,
             secure: IS_PROD,
             sameSite: 'Strict',
-            maxAge: 3 * 24 * 3600 * 1000
+            maxAge: 3 * 24 * 3600 * 1000,
           });
           res.json({ success: true, admin: user.is_admin === 1 });
         });
@@ -220,7 +219,6 @@ app.post('/api/change-password', requireLogin, upload.none(),
   async (req, res) => {
     const { current, password } = req.body;
     const { userid } = req.user;
-
     db.get('SELECT password FROM users WHERE userid=?', [userid], async (err, row) => {
       if (err || !row) return res.status(500).json({ error: 'DB error' });
       const ok = await bcrypt.compare(current, row.password);
@@ -285,6 +283,8 @@ app.delete('/api/categories/:id',
 );
 
 // ========== Products ==========
+
+// 列表（可按分类）
 app.get('/api/products',
   query('catid').optional().isInt(),
   handleValidationErrors,
@@ -301,16 +301,35 @@ app.get('/api/products',
   }
 );
 
+// ✅ 补回：单个商品详情（供 product.html 使用）
+app.get('/api/product',
+  query('pid').isInt(),
+  handleValidationErrors,
+  (req, res) => {
+    const { pid } = req.query;
+    db.get(
+      'SELECT pid, catid, name, price, description, image FROM products WHERE pid = ?;',
+      [pid],
+      (err, row) => {
+        if (err) return res.status(500).json({ error: 'DB error' });
+        if (!row) return res.status(404).json({ error: 'Not found' });
+        res.json(sanitizeProduct(row));
+      }
+    );
+  }
+);
+
 async function saveResizedImages(tmpPath, pid) {
-  const bigDir = path.join(__dirname, 'uploads', 'big');
+  const bigDir   = path.join(__dirname, 'uploads', 'big');
   const smallDir = path.join(__dirname, 'uploads', 'small');
-  if (!fs.existsSync(bigDir)) fs.mkdirSync(bigDir, { recursive: true });
+  if (!fs.existsSync(bigDir))   fs.mkdirSync(bigDir,   { recursive: true });
   if (!fs.existsSync(smallDir)) fs.mkdirSync(smallDir, { recursive: true });
 
-  const bigPath = path.join(bigDir, `${pid}_big.jpg`);
+  const bigPath   = path.join(bigDir,   `${pid}_big.jpg`);
   const smallPath = path.join(smallDir, `${pid}_small.jpg`);
+
   await sharp(tmpPath).resize({ width: 1200 }).jpeg({ quality: 80 }).toFile(bigPath);
-  await sharp(tmpPath).resize({ width: 300 }).jpeg({ quality: 80 }).toFile(smallPath);
+  await sharp(tmpPath).resize({ width: 300  }).jpeg({ quality: 80 }).toFile(smallPath);
   fs.unlink(tmpPath, () => {});
   return { big: `/uploads/big/${pid}_big.jpg`, small: `/uploads/small/${pid}_small.jpg` };
 }
@@ -330,7 +349,7 @@ app.post('/api/products',
       [catid, name, price, description || ''],
       function(err) {
         if (err) return res.status(500).json({ error: 'DB error' });
-        const pid = this.lastID;
+        const pid  = this.lastID;
         const file = req.file;
         if (!file) {
           return res.status(201).json({
@@ -372,10 +391,10 @@ app.put('/api/products/:id',
 
     const fields = [];
     const params = [];
-    if (catid !== undefined) { fields.push('catid = ?'); params.push(catid); }
-    if (name !== undefined) { fields.push('name = ?'); params.push(name); }
-    if (price !== undefined) { fields.push('price = ?'); params.push(price); }
-    if (description !== undefined) { fields.push('description = ?'); params.push(description); }
+    if (catid !== undefined)     { fields.push('catid = ?');     params.push(catid); }
+    if (name !== undefined)      { fields.push('name  = ?');     params.push(name); }
+    if (price !== undefined)     { fields.push('price = ?');     params.push(price); }
+    if (description !== undefined){ fields.push('description = ?'); params.push(description); }
 
     const file = req.file;
     if (file) {
