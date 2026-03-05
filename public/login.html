@@ -22,6 +22,7 @@
       box-shadow:0 2px 8px rgba(0,0,0,.12);
     }
     .topbar a{ color:#fff; text-decoration:none; font-size:.95rem; opacity:.9 }
+    .topbar .title{ font-weight:700; letter-spacing:.3px }
     .topbar a:hover{ opacity:1 }
     .page{
       min-height:calc(100vh - 60px);
@@ -56,13 +57,33 @@
     .links{ text-align:right; margin-top:.4rem; }
     .links a{ color:var(--brand); text-decoration:none; font-size:.9rem }
     .links a:hover{ text-decoration:underline }
+    
+        /* 让登录卡片略窄，避免过宽 */
+    .card{
+      width:min(430px, 92vw);      /* 原来更宽的话，收敛到 430px */
+    }
+
+    /* 让输入框宽度“刚好”，不要无限拉长 */
+    input[type="email"],
+    input[type="password"]{
+      width:100%;
+      max-width:360px;             /* 关键：限制最大宽度为 360px */
+      box-sizing:border-box;       /* 防止内边距撑大 */
+    }
+
+    /* 为了行内对齐更美观，让每个 label 都独占一行 */
+    #login-form label{
+      display:block;
+      margin-bottom:.6rem;
+    }
+
   </style>
 </head>
 
 <body>
 
   <div class="topbar">
-    <div>Shopping Admin</div>
+    <div class="title">Shopping Admin</div>
     <a href="/">← Back to Site</a>
   </div>
 
