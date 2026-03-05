@@ -2,15 +2,21 @@ function $(sel){return document.querySelector(sel)}
 function create(el, attrs={}){const e=document.createElement(el);Object.assign(e, attrs);return e}
 async function fetchJSON(url, opts){ const res = await fetch(url, opts); return res.json(); }
 
-// ====== 新增：顶部显示登录状态，并提供 Logout ======
+let CSRF_TOKEN = null;
+async function ensureCSRF(){
+  if (CSRF_TOKEN) return CSRF_TOKEN;
+  const data = await fetchJSON('/api/csrf');
+  CSRF_TOKEN = data.csrf;
+  return CSRF_TOKEN;
+}
+
+// ==== 顶部显示登录状态 + Logout（若 admin.html 没有按钮也不报错）====
 async function showLoginStatus(){
   try{
     const me = await fetchJSON('/api/me');
     const who = $('#who');
-    if(me.loggedIn){
-      who.textContent = `Logged in as: ${me.email}${me.admin ? ' (admin)' : ''}`;
-    }else{
-      who.textContent = 'Not logged in';
+    if(who){
+      who.textContent = me.loggedIn ? `Logged in as: ${me.email}${me.admin ? ' (admin)' : ''}` : 'Not logged in';
     }
   }catch{
     const who = $('#who');
@@ -18,11 +24,8 @@ async function showLoginStatus(){
   }
 }
 async function doLogout(){
-  try{
-    await fetch('/api/logout', { method:'POST' });
-  }finally{
-    location.href = '/login.html';
-  }
+  try{ await fetch('/api/logout', { method:'POST' }); }
+  finally{ location.href = '/login.html'; }
 }
 document.addEventListener('DOMContentLoaded', ()=>{
   showLoginStatus();
@@ -30,37 +33,36 @@ document.addEventListener('DOMContentLoaded', ()=>{
   if(btn) btn.addEventListener('click', doLogout);
 });
 
-// ====== 你原有的 Admin 逻辑 ======
+// ====== 渲染分类与商品 ======
 async function refreshCategories(){
   const cats = await fetchJSON('/api/categories');
   const catList = $('#cat-list');
   const delSel = $('#cat-delete-select');
   const prodSel = $('#prod-catid');
-  const updSel = $('#upd-catid');
+  const updSel  = $('#upd-catid');
   const filterSel = $('#filter-catid');
 
-  catList.innerHTML = '';
-  delSel.innerHTML = '';
-  prodSel.innerHTML = '';
-  updSel.innerHTML = '<option value="">(no change)</option>';
-  filterSel.innerHTML = '<option value="">All</option>';
+  if(catList) catList.innerHTML = '';
+  if(delSel) delSel.innerHTML   = '';
+  if(prodSel) prodSel.innerHTML = '';
+  if(updSel)  updSel.innerHTML  = '<option value="">(no change)</option>';
+  if(filterSel) filterSel.innerHTML = '<option value="">All</option>';
 
   for (const c of cats){
-    catList.appendChild(create('li', { innerText: `${c.catid}: ${c.name}` }));
-    delSel.appendChild(create('option', { value: c.catid, innerText: `${c.name} (#${c.catid})` }));
-    prodSel.appendChild(create('option', { value: c.catid, innerText: c.name }));
-    updSel.appendChild(create('option', { value: c.catid, innerText: c.name }));
-    filterSel.appendChild(create('option', { value: c.catid, innerText: c.name }));
+    if(catList) catList.appendChild(create('li', { innerText: `${c.catid}: ${c.name}` }));
+    if(delSel)  delSel.appendChild(create('option', { value: c.catid, innerText: `${c.name} (#${c.catid})` }));
+    if(prodSel) prodSel.appendChild(create('option', { value: c.catid, innerText: c.name }));
+    if(updSel)  updSel.appendChild(create('option', { value: c.catid, innerText: c.name }));
+    if(filterSel) filterSel.appendChild(create('option', { value: c.catid, innerText: c.name }));
   }
 }
 
 async function refreshProducts(){
-  const catid = $('#filter-catid').value;
+  const catid = $('#filter-catid') ? $('#filter-catid').value : '';
   const url = catid ? `/api/products?catid=${catid}` : '/api/products';
   const items = await fetchJSON(url);
   const table = $('#prod-table');
-
-  // 画一个简单表格
+  if(!table) return;
   table.innerHTML = `
     <tr>
       <th>PID</th><th>Cat</th><th>Name</th><th>Price</th><th>Has Image</th>
@@ -77,11 +79,13 @@ async function refreshProducts(){
   `;
 }
 
-// 事件绑定
-$('#form-add-cat').addEventListener('submit', async (e)=>{
+// ====== 事件：写操作都附带 CSRF ======
+const formAddCat = $('#form-add-cat');
+if(formAddCat) formAddCat.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const form = e.target;
   const data = new URLSearchParams(new FormData(form));
+  data.append('csrf', await ensureCSRF());
   const res = await fetch('/api/categories', {
     method: 'POST',
     headers: { 'Content-Type':'application/x-www-form-urlencoded' },
@@ -92,17 +96,22 @@ $('#form-add-cat').addEventListener('submit', async (e)=>{
   await refreshCategories();
 });
 
-$('#btn-del-cat').addEventListener('click', async ()=>{
-  const id = $('#cat-delete-select').value;
+const btnDelCat = $('#btn-del-cat');
+if(btnDelCat) btnDelCat.addEventListener('click', async ()=>{
+  const sel = $('#cat-delete-select');
+  const id = sel ? sel.value : '';
   if(!id) return;
-  await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+  const url = `/api/categories/${id}?csrf=${encodeURIComponent(await ensureCSRF())}`;
+  await fetch(url, { method: 'DELETE' });
   await refreshCategories();
   await refreshProducts();
 });
 
-$('#form-add-product').addEventListener('submit', async (e)=>{
+const formAddProd = $('#form-add-product');
+if(formAddProd) formAddProd.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const data = new FormData(e.target);
+  data.append('csrf', await ensureCSRF());
   const res = await fetch('/api/products', { method:'POST', body:data });
   const json = await res.json();
   if(json.errors) alert(JSON.stringify(json.errors));
@@ -110,15 +119,16 @@ $('#form-add-product').addEventListener('submit', async (e)=>{
   await refreshProducts();
 });
 
-$('#form-update-product').addEventListener('submit', async (e)=>{
+const formUpdProd = $('#form-update-product');
+if(formUpdProd) formUpdProd.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const fd = new FormData(e.target);
   const id = fd.get('id');
   fd.delete('id');
-  // 删除空字符串字段，避免触发后端校验
   for(const [k,v] of Array.from(fd.entries())){
     if(typeof v === 'string' && v.trim() === '') fd.delete(k);
   }
+  fd.append('csrf', await ensureCSRF());
   const res = await fetch(`/api/products/${id}`, { method:'PUT', body:fd });
   const json = await res.json();
   if(json.errors){
@@ -129,15 +139,18 @@ $('#form-update-product').addEventListener('submit', async (e)=>{
   }
 });
 
-$('#form-del-product').addEventListener('submit', async (e)=>{
+const formDelProd = $('#form-del-product');
+if(formDelProd) formDelProd.addEventListener('submit', async (e)=>{
   e.preventDefault();
   const fd = new FormData(e.target);
   const id = fd.get('id');
-  await fetch(`/api/products/${id}`, { method:'DELETE' });
+  const url = `/api/products/${id}?csrf=${encodeURIComponent(await ensureCSRF())}`;
+  await fetch(url, { method:'DELETE' });
   e.target.reset();
   await refreshProducts();
 });
 
+// ====== 启动渲染 ======
 document.addEventListener('DOMContentLoaded', async ()=>{
   await refreshCategories();
   await refreshProducts();

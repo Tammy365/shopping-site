@@ -1,37 +1,108 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Login</title>
+  <meta charset="UTF-8"/>
+  <title>Admin Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    :root{
+      --brand:#1976D2; --brand-d:#0d47a1;
+      --bg:#f5f7fb; --text:#2c3e50;
+      --muted:#6b7c93; --danger:#e74c3c;
+      --border:#e0e4ee; --card:#fff;
+      --radius:10px;
+    }
+    body{
+      margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      background:var(--bg); color:var(--text);
+    }
+    .topbar{
+      background:var(--brand); color:#fff; padding:.9rem 1.2rem;
+      display:flex; justify-content:space-between; align-items:center;
+      box-shadow:0 2px 8px rgba(0,0,0,.12);
+    }
+    .topbar a{ color:#fff; text-decoration:none; font-size:.95rem; opacity:.9 }
+    .topbar a:hover{ opacity:1 }
+    .page{
+      min-height:calc(100vh - 60px);
+      display:flex; justify-content:center; align-items:center;
+      padding:2rem 1rem;
+    }
+    .card{
+      width:min(430px,90vw); background:var(--card);
+      padding:1.5rem 1.5rem 1.9rem; border-radius:var(--radius);
+      border:1px solid var(--border);
+      box-shadow:0 10px 30px rgba(0,0,0,.06);
+    }
+    h2{ margin-top:0; margin-bottom:1.2rem; text-align:center }
+    label{ font-size:.92rem; color:var(--muted) }
+    input{
+      width:100%; padding:.7rem .8rem; margin-top:.2rem;
+      border-radius:8px; border:1px solid var(--border);
+      font-size:1rem;
+    }
+    input:focus{
+      outline:none; border-color:var(--brand);
+      box-shadow:0 0 0 3px rgba(25,118,210,.2);
+    }
+    .btn{
+      width:100%; padding:.75rem; border:none;
+      background:var(--brand); color:#fff;
+      border-radius:8px; cursor:pointer; font-weight:600;
+      margin-top:.6rem;
+    }
+    .btn:hover{ background:var(--brand-d) }
+    .msg{ color:var(--danger); margin-top:.6rem; height:1.2rem; }
+    .links{ text-align:right; margin-top:.4rem; }
+    .links a{ color:var(--brand); text-decoration:none; font-size:.9rem }
+    .links a:hover{ text-decoration:underline }
+  </style>
 </head>
+
 <body>
-  <h2>Login</h2>
 
-  <form id="login-form">
-    <label>Email: <input type="email" name="email" required></label><br><br>
-    <label>Password: <input type="password" name="password" required></label><br><br>
+  <div class="topbar">
+    <div>Shopping Admin</div>
+    <a href="/">← Back to Site</a>
+  </div>
 
-    <button type="submit">Login</button>
-  </form>
+  <div class="page">
+    <div class="card">
+      <h2>Administrator Login</h2>
 
-  <p id="msg" style="color:red;"></p>
+      <form id="login-form">
+        <label>Email
+          <input type="email" name="email" required placeholder="admin@example.com"/>
+        </label>
+        <br/>
+        <label>Password
+          <input type="password" name="password" required placeholder="••••••••"/>
+        </label>
+
+        <button class="btn" type="submit">Sign in</button>
+      </form>
+
+      <div id="msg" class="msg"></div>
+
+      <div class="links">
+        <a href="/register.html">Register</a>
+      </div>
+    </div>
+  </div>
 
   <script>
-    document.querySelector("#login-form").addEventListener("submit", async (e) => {
+    document.querySelector('#login-form').addEventListener('submit', async(e)=>{
       e.preventDefault();
-      const form = new FormData(e.target);
-      const res = await fetch("/api/login", {
-        method: "POST",
-        body: form
-      });
-      const json = await res.json();
-      if (json.success) {
-        if (json.admin) location.href = "/admin"; 
-        else location.href = "/";
-      } else {
-        document.querySelector("#msg").textContent = json.error || "Login failed";
+      const fd=new FormData(e.target);
+      const res=await fetch('/api/login',{method:'POST',body:fd});
+      const json=await res.json();
+      if(json.success){
+        location.href=json.admin?'/admin':'/';
+      }else{
+        document.querySelector('#msg').textContent=json.error||'Login failed';
       }
     });
   </script>
+
 </body>
 </html>

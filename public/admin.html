@@ -1,87 +1,208 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <title>Admin Panel</title>
-  <link rel="stylesheet" href="/css/styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
   <style>
-    /* 仅为退出按钮做个小样式，不影响你现有CSS */
-    .admin-topbar {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: .75rem 1rem; background:#f7f7f7; border-bottom:1px solid #eee;
+    :root{
+      --brand:#1976D2; --brand-d:#0d47a1;
+      --bg:#f5f7fb; --text:#2c3e50;
+      --muted:#6b7c93; --danger:#e74c3c;
+      --border:#e0e4ee; --card:#fff;
+      --radius:10px;
     }
-    .admin-topbar .who {
-      font-size: .95rem; color:#555;
+    body{
+      margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      background:var(--bg); color:var(--text);
     }
-    .admin-topbar .actions {
-      display: flex; gap: .5rem; align-items: center;
+
+    /* 顶栏 */
+    .topbar{
+      background:var(--brand); color:#fff;
+      padding:.9rem 1.2rem;
+      display:flex; justify-content:space-between; align-items:center;
+      box-shadow:0 2px 8px rgba(0,0,0,.12);
     }
-    .btn-logout{
-      background:#e74c3c; color:#fff; border:none; padding:.4rem .75rem;
-      border-radius:4px; cursor:pointer;
+    .topbar a{ color:#fff; text-decoration:none; opacity:.9; margin-right:1rem }
+    .topbar a:hover{ opacity:1 }
+    .ops{ display:flex; align-items:center; gap:.8rem }
+    #who{ font-size:.92rem; opacity:.95 }
+    .btn{
+      padding:.48rem .9rem;
+      border:none; border-radius:8px;
+      cursor:pointer; font-weight:600;
+      background:#fff; color:var(--brand);
     }
-    .btn-logout:hover{ background:#c0392b; }
+    .btn:hover{ background:#eef3ff }
+    .danger{ background:var(--danger); color:#fff }
+    .danger:hover{ background:#c0392b }
+
+    /* 页面内容 */
+    header h1{
+      max-width:1100px; margin:1.1rem auto .4rem;
+      padding:0 1rem; text-align:center;
+    }
+    main.admin{
+      max-width:1100px; margin:0 auto 2rem;
+      padding:0 1rem;
+    }
+
+    section{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      padding:1.25rem 1.4rem;
+      box-shadow:0 10px 30px rgba(0,0,0,.06);
+      margin-bottom:1.2rem;
+    }
+
+    form{
+      display:flex; flex-wrap:wrap;
+      gap:1rem 1.2rem; align-items:flex-end;
+    }
+    label{
+      font-size:.92rem; color:var(--muted);
+      display:flex; flex-direction:column; width:220px;
+    }
+    input[type="text"],input[type="number"],select,textarea{
+      padding:.55rem .7rem; border:1px solid var(--border);
+      border-radius:8px; font-size:1rem; background:#fff;
+      transition:border .15s, box-shadow .15s;
+    }
+    input:focus,textarea:focus,select:focus{
+      border-color:var(--brand);
+      box-shadow:0 0 0 3px rgba(25,118,210,.2);
+      outline:none;
+    }
+
+    table{
+      width:100%; border-collapse:collapse;
+      border:1px solid var(--border); margin-top:.6rem;
+      font-size:.95rem;
+    }
+    th,td{
+      padding:.6rem .7rem; border-bottom:1px solid var(--border);
+      text-align:left;
+    }
+    th{ background:#f2f5ff; font-weight:600 }
   </style>
 </head>
-<body>
-  <header><h1>Admin Panel</h1></header>
 
-  <!-- 顶部工具条：显示当前登录状态 + Logout -->
-  <div class="admin-topbar">
-    <div class="who" id="who">Checking login status...</div>
-    <div class="actions">
-      <button id="logout-btn" class="btn-logout" title="Logout">Logout</button>
+<body>
+
+  <!-- 顶部导航栏 -->
+  <div class="topbar">
+    <div>
+      <a href="/">← Site</a>
+      <strong>Shopping Admin</strong>
+    </div>
+    <div class="ops">
+      <span id="who">Checking login…</span>
+      <a href="/change-password.html">Change Password</a>
+      <button id="logout-btn" class="btn danger">Logout</button>
     </div>
   </div>
 
+  <header><h1>Admin Panel</h1></header>
+
   <main class="admin">
+
+    <!-- 分类管理（保留原结构） -->
     <section>
       <h2>Manage Categories</h2>
       <form id="form-add-cat">
-        <input name="name" placeholder="Category Name" required />
-        <button type="submit">Add Category</button>
+        <label>Category Name
+          <input name="name" placeholder="Category Name" required/>
+        </label>
+        <button type="submit" class="btn">Add Category</button>
       </form>
-      <div>
-        <select id="cat-delete-select"></select>
-        <button id="btn-del-cat">Delete Selected Category</button>
-      </div>
+
+      <br/>
+      <select id="cat-delete-select"></select>
+      <button id="btn-del-cat" class="btn danger">Delete Selected Category</button>
+
       <ul id="cat-list"></ul>
     </section>
 
+    <!-- 商品管理（保留原结构 + Has Image 列继续由 admin.js 自动生成） -->
     <section>
       <h2>Manage Products</h2>
+
       <form id="form-add-product" enctype="multipart/form-data">
-        <label>Category: <select name="catid" id="prod-catid"></select></label>
-        <label>Name: <input name="name" required /></label>
-        <label>Price: <input type="number" step="0.01" name="price" required /></label>
-        <label>Description:<br><textarea name="description" rows="3"></textarea></label>
-        <label>Image: <input type="file" name="image" accept="image/*" /></label>
-        <button type="submit">Insert Product</button>
+        <label>Category
+          <select name="catid" id="prod-catid"></select>
+        </label>
+
+        <label>Name
+          <input name="name" required/>
+        </label>
+
+        <label>Price
+          <input type="number" step="0.01" name="price" required/>
+        </label>
+
+        <label>Description
+          <textarea name="description" rows="2"></textarea>
+        </label>
+
+        <label>Image
+          <input type="file" name="image" accept="image/*"/>
+        </label>
+
+        <button type="submit" class="btn">Insert Product</button>
       </form>
 
-      <h3>Update Product (basic)</h3>
+      <h3>Update Product</h3>
+
       <form id="form-update-product" enctype="multipart/form-data">
-        <label>PID: <input name="id" type="number" required /></label>
-        <label>Category: <select name="catid" id="upd-catid"><option value="">(no change)</option></select></label>
-        <label>Name: <input name="name" /></label>
-        <label>Price: <input type="number" step="0.01" name="price" /></label>
-        <label>Description:<br><textarea name="description" rows="2"></textarea></label>
-        <label>New Image: <input type="file" name="image" accept="image/*" /></label>
-        <button type="submit">Update Product</button>
+        <label>PID
+          <input name="id" type="number" required/>
+        </label>
+
+        <label>Category
+          <select name="catid" id="upd-catid"><option value="">(no change)</option></select>
+        </label>
+
+        <label>Name
+          <input name="name"/>
+        </label>
+
+        <label>Price
+          <input type="number" step="0.01" name="price"/>
+        </label>
+
+        <label>Description
+          <textarea name="description" rows="2"></textarea>
+        </label>
+
+        <label>New Image
+          <input type="file" name="image" accept="image/*"/>
+        </label>
+
+        <button type="submit" class="btn">Update Product</button>
       </form>
 
       <h3>Delete Product</h3>
+
       <form id="form-del-product">
-        <label>PID: <input name="id" type="number" required /></label>
-        <button type="submit">Delete</button>
+        <label>PID
+          <input name="id" type="number" required/>
+        </label>
+        <button type="submit" class="btn danger">Delete</button>
       </form>
 
       <h3>Current Products</h3>
-      <div>
-        Filter by Category: <select id="filter-catid"><option value="">All</option></select>
-      </div>
-      <table id="prod-table" border="1" cellpadding="6"></table>
+
+      <label>Filter:
+        <select id="filter-catid"><option value="">All</option></select>
+      </label>
+
+      <!-- 保留表格，由 admin.js 渲染含 Has Image -->
+      <table id="prod-table"></table>
     </section>
+
   </main>
 
   <script src="/js/admin.js"></script>

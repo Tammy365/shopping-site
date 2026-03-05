@@ -1,4 +1,4 @@
-// server.js — Phase 2B + Phase 4 (Auth + Security)
+// server.js — Phase 2B + Phase 4 (Auth + CSRF + Change Password + Security)
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
@@ -16,13 +16,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT    = process.env.PORT || 3000;
 const IS_PROD = process.env.NODE_ENV === 'production';
 
-// -------- 基础安全 --------
+// -------- 安全头（含基础 CSP）--------
 app.disable('x-powered-by');
-
-// 轻量 CSP（为兼容你现有的 product.html 内联脚本，临时放开 'unsafe-inline'；后续可改 nonce）
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
@@ -36,7 +34,6 @@ app.use((req, res, next) => {
       "frame-ancestors 'none'"
     ].join('; ')
   );
-  // 附加常见安全头
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -49,7 +46,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(morgan('dev'));
 
-// -------- SQLite 连接 --------
+// -------- SQLite --------
 sqlite3.verbose();
 const db = new sqlite3.Database(path.join(__dirname, 'db', 'shop.db'));
 db.serialize(() => db.run('PRAGMA foreign_keys = ON;'));
@@ -60,14 +57,12 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-// -------- 公共工具 --------
+// -------- 工具 --------
 function handleValidationErrors(req, res, next) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   next();
 }
-
-// 输出转义（防御 XSS：如未来在服务器端拼接 HTML 时使用）
 function escapeHTML(str = '') {
   return String(str).replace(/[&<>"']/g, (m) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -81,48 +76,75 @@ function sanitizeProduct(row) {
     description: row.description != null ? escapeHTML(row.description) : row.description
   };
 }
-
-// -------- 会话与鉴权 --------
-function generateToken() {
-  return crypto.randomBytes(32).toString('hex');
+function generateToken() { return crypto.randomBytes(32).toString('hex'); }
+function wantsHTML(req){
+  return req.accepts(['html','json']) === 'html' || /text\/html/.test(req.get('accept') || '');
 }
 
-// 校验是否为管理员
-function requireAdmin(req, res, next) {
+// -------- 登录态/权限中间件 --------
+function requireLogin(req, res, next) {
   const token = req.cookies?.auth;
-  const wantsHTML =
-    req.accepts(['html','json']) === 'html' || /text\/html/.test(req.get('accept') || '');
-
   if (!token) {
-    if (wantsHTML) return res.redirect('/login.html'); // 未登录→跳登录页
-    return res.status(401).json({ error: 'Not logged in' }); // 给前端脚本用
+    return wantsHTML(req) ? res.redirect('/login.html') : res.status(401).json({ error: 'Not logged in' });
   }
-
   db.get(
-    'SELECT u.is_admin FROM sessions s JOIN users u ON s.userid=u.userid WHERE s.token=?',
+    'SELECT u.userid, u.email, u.is_admin FROM sessions s JOIN users u ON s.userid=u.userid WHERE s.token=?',
     [token],
     (err, row) => {
-      if (err || !row) {
-        if (wantsHTML) return res.redirect('/login.html');
-        return res.status(401).json({ error: 'Invalid session' });
-      }
-      if (row.is_admin !== 1) {
-        if (wantsHTML) return res.redirect('/login.html');
-        return res.status(403).json({ error: 'Forbidden' });
-      }
+      if (err || !row)
+        return wantsHTML(req) ? res.redirect('/login.html') : res.status(401).json({ error: 'Invalid session' });
+      req.user = { userid: row.userid, email: row.email, is_admin: row.is_admin === 1 };
+      next();
+    }
+  );
+}
+function requireAdmin(req, res, next) {
+  const token = req.cookies?.auth;
+  if (!token) {
+    return wantsHTML(req) ? res.redirect('/login.html') : res.status(401).json({ error: 'Not logged in' });
+  }
+  db.get(
+    'SELECT u.userid, u.email, u.is_admin FROM sessions s JOIN users u ON s.userid=u.userid WHERE s.token=?',
+    [token],
+    (err, row) => {
+      if (err || !row)
+        return wantsHTML(req) ? res.redirect('/login.html') : res.status(401).json({ error: 'Invalid session' });
+      if (row.is_admin !== 1)
+        return wantsHTML(req) ? res.redirect('/login.html') : res.status(403).json({ error: 'Forbidden' });
+      req.user = { userid: row.userid, email: row.email, is_admin: true };
       next();
     }
   );
 }
 
-// 登录
+// -------- CSRF：颁发 + 校验 --------
+app.get('/api/csrf', (req, res) => {
+  const csrf = generateToken();
+  res.cookie('csrf_token', csrf, {
+    httpOnly: true,
+    secure: IS_PROD,
+    sameSite: 'Strict',
+    maxAge: 60 * 60 * 1000,
+    path: '/'
+  });
+  res.json({ csrf });
+});
+function validateCSRF(req, res, next) {
+  const cookieToken = req.cookies?.csrf_token;
+  const bodyToken   = req.body?.csrf || req.query?.csrf;
+  if (!cookieToken || !bodyToken || cookieToken !== bodyToken) {
+    return res.status(403).json({ error: 'CSRF token invalid' });
+  }
+  next();
+}
+
+// -------- 认证：登录 / 注册 / 登出 / 我是谁 --------
 app.post('/api/login', upload.none(),
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 }),
   handleValidationErrors,
   (req, res) => {
     const { email, password } = req.body;
-
     db.get('SELECT * FROM users WHERE email=?', [email], async (err, user) => {
       if (err) return res.status(500).json({ error: 'DB error' });
       if (!user) return res.json({ error: 'Invalid email or password' });
@@ -130,17 +152,16 @@ app.post('/api/login', upload.none(),
       const ok = await bcrypt.compare(password, user.password);
       if (!ok) return res.json({ error: 'Invalid email or password' });
 
-      // 防会话固定：清理该用户旧会话，签发新 token
+      // 防会话固定：清旧会话 → 发新 token
       db.run('DELETE FROM sessions WHERE userid=?', [user.userid], (e1) => {
         if (e1) return res.status(500).json({ error: 'DB error' });
 
         const token = generateToken();
         db.run('INSERT INTO sessions(token, userid) VALUES (?,?)', [token, user.userid], (e2) => {
           if (e2) return res.status(500).json({ error: 'DB error' });
-
           res.cookie('auth', token, {
             httpOnly: true,
-            secure: IS_PROD,          // 本地开发可为 false；上线需 true（HTTPS）
+            secure: IS_PROD,
             sameSite: 'Strict',
             maxAge: 3 * 24 * 3600 * 1000
           });
@@ -151,7 +172,6 @@ app.post('/api/login', upload.none(),
   }
 );
 
-// 注册
 app.post('/api/register', upload.none(),
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 }),
@@ -160,7 +180,6 @@ app.post('/api/register', upload.none(),
   async (req, res) => {
     const { email, password } = req.body;
     const hashed = await bcrypt.hash(password, 12);
-
     db.run(
       'INSERT INTO users(email, password, is_admin) VALUES (?, ?, 0)',
       [email, hashed],
@@ -172,7 +191,6 @@ app.post('/api/register', upload.none(),
   }
 );
 
-// 登出
 app.post('/api/logout', (req, res) => {
   const token = req.cookies?.auth;
   if (token) db.run('DELETE FROM sessions WHERE token=?', [token], () => {});
@@ -180,11 +198,9 @@ app.post('/api/logout', (req, res) => {
   res.json({ success: true });
 });
 
-// 查询当前登录状态（可选，方便前端显示“Hi, admin/guest”）
 app.get('/api/me', (req, res) => {
   const token = req.cookies?.auth;
   if (!token) return res.json({ loggedIn: false });
-
   db.get(
     'SELECT u.userid, u.email, u.is_admin FROM sessions s JOIN users u ON s.userid=u.userid WHERE s.token=?',
     [token],
@@ -195,7 +211,34 @@ app.get('/api/me', (req, res) => {
   );
 });
 
-// -------- Admin 页面保护（务必放在静态资源之前，以拦截 /admin.html）--------
+// -------- 修改密码（登录即可；改完强制登出）--------
+app.post('/api/change-password', requireLogin, upload.none(),
+  body('current').isLength({ min: 6 }),
+  body('password').isLength({ min: 6 }),
+  body('password2').custom((v, { req }) => v === req.body.password),
+  handleValidationErrors,
+  async (req, res) => {
+    const { current, password } = req.body;
+    const { userid } = req.user;
+
+    db.get('SELECT password FROM users WHERE userid=?', [userid], async (err, row) => {
+      if (err || !row) return res.status(500).json({ error: 'DB error' });
+      const ok = await bcrypt.compare(current, row.password);
+      if (!ok) return res.status(400).json({ error: 'Current password incorrect' });
+
+      const hashed = await bcrypt.hash(password, 12);
+      db.run('UPDATE users SET password=? WHERE userid=?', [hashed, userid], (e1) => {
+        if (e1) return res.status(500).json({ error: 'DB error' });
+        db.run('DELETE FROM sessions WHERE userid=?', [userid], (e2) => {
+          res.clearCookie('auth');
+          res.json({ success: true });
+        });
+      });
+    });
+  }
+);
+
+// -------- Admin 页面保护（静态托管之前）--------
 app.get('/admin', requireAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
@@ -203,7 +246,7 @@ app.get('/admin.html', requireAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
-// -------- 静态资源（置于 /admin 保护之后）--------
+// -------- 静态资源 --------
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -211,13 +254,12 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.get('/api/categories', (req, res) => {
   db.all('SELECT catid, name FROM categories ORDER BY name;', [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB error' });
-    // 输出编码（如果未来这些值拼到 HTML 中）
     res.json(rows.map(r => ({ ...r, name: escapeHTML(r.name) })));
   });
 });
 
 app.post('/api/categories',
-  requireAdmin,
+  requireAdmin, validateCSRF,
   body('name').trim().isLength({ min: 1, max: 100 }),
   handleValidationErrors,
   (req, res) => {
@@ -230,7 +272,7 @@ app.post('/api/categories',
 );
 
 app.delete('/api/categories/:id',
-  requireAdmin,
+  requireAdmin, validateCSRF,
   param('id').isInt(),
   handleValidationErrors,
   (req, res) => {
@@ -259,20 +301,6 @@ app.get('/api/products',
   }
 );
 
-app.get('/api/product',
-  query('pid').isInt(),
-  handleValidationErrors,
-  (req, res) => {
-    const { pid } = req.query;
-    db.get('SELECT pid, catid, name, price, description, image FROM products WHERE pid = ?;', [pid], (err, row) => {
-      if (err) return res.status(500).json({ error: 'DB error' });
-      if (!row) return res.status(404).json({ error: 'Not found' });
-      res.json(sanitizeProduct(row));
-    });
-  }
-);
-
-// 保存并生成两张图
 async function saveResizedImages(tmpPath, pid) {
   const bigDir = path.join(__dirname, 'uploads', 'big');
   const smallDir = path.join(__dirname, 'uploads', 'small');
@@ -281,17 +309,14 @@ async function saveResizedImages(tmpPath, pid) {
 
   const bigPath = path.join(bigDir, `${pid}_big.jpg`);
   const smallPath = path.join(smallDir, `${pid}_small.jpg`);
-
-  // 大图 1200px，缩略图 300px
   await sharp(tmpPath).resize({ width: 1200 }).jpeg({ quality: 80 }).toFile(bigPath);
   await sharp(tmpPath).resize({ width: 300 }).jpeg({ quality: 80 }).toFile(smallPath);
-
   fs.unlink(tmpPath, () => {});
   return { big: `/uploads/big/${pid}_big.jpg`, small: `/uploads/small/${pid}_small.jpg` };
 }
 
 app.post('/api/products',
-  requireAdmin,
+  requireAdmin, validateCSRF,
   upload.single('image'),
   body('catid').isInt(),
   body('name').trim().isLength({ min: 1 }),
@@ -333,7 +358,7 @@ app.post('/api/products',
 );
 
 app.put('/api/products/:id',
-  requireAdmin,
+  requireAdmin, validateCSRF,
   upload.single('image'),
   param('id').isInt(),
   body('catid').optional().isInt(),
@@ -374,7 +399,7 @@ app.put('/api/products/:id',
 );
 
 app.delete('/api/products/:id',
-  requireAdmin,
+  requireAdmin, validateCSRF,
   param('id').isInt(),
   handleValidationErrors,
   (req, res) => {
@@ -399,12 +424,12 @@ app.delete('/api/products/:id',
   }
 );
 
-// 根路径：返回主页
+// -------- 主页 --------
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 错误处理
+// -------- 错误处理 --------
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'Internal error' });
