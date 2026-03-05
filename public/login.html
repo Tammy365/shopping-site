@@ -4,6 +4,8 @@
   <meta charset="UTF-8"/>
   <title>Admin Login</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+  <!-- ↓↓↓ 保留你原有样式（与上传版本一致） ↓↓↓ -->
   <style>
     :root{
       --brand:#1976D2; --brand-d:#0d47a1;
@@ -57,31 +59,16 @@
     .links{ text-align:right; margin-top:.4rem; }
     .links a{ color:var(--brand); text-decoration:none; font-size:.9rem }
     .links a:hover{ text-decoration:underline }
-    
-        /* 让登录卡片略窄，避免过宽 */
-    .card{
-      width:min(430px, 92vw);      /* 原来更宽的话，收敛到 430px */
-    }
 
-    /* 让输入框宽度“刚好”，不要无限拉长 */
-    input[type="email"],
-    input[type="password"]{
-      width:100%;
-      max-width:360px;             /* 关键：限制最大宽度为 360px */
-      box-sizing:border-box;       /* 防止内边距撑大 */
+    /* 你之前的宽度微调（保留） */
+    .card{ width:min(430px, 92vw); }
+    #login-form label{ display:block; margin-bottom:.6rem; }
+    input[type="email"], input[type="password"]{
+      width:100%; max-width:360px; box-sizing:border-box;
     }
-
-    /* 为了行内对齐更美观，让每个 label 都独占一行 */
-    #login-form label{
-      display:block;
-      margin-bottom:.6rem;
-    }
-
   </style>
 </head>
-
 <body>
-
   <div class="topbar">
     <div class="title">Shopping Account</div>
     <a href="/">← Back to Site</a>
@@ -90,8 +77,7 @@
   <div class="page">
     <div class="card">
       <h2>Account Login</h2>
-
-      <form id="login-form">
+      <form id="login-form" novalidate>
         <label>Email
           <input type="email" name="email" required placeholder="admin@example.com"/>
         </label>
@@ -99,7 +85,6 @@
         <label>Password
           <input type="password" name="password" required placeholder="••••••••"/>
         </label>
-
         <button class="btn" type="submit">Sign in</button>
       </form>
 
@@ -111,19 +96,8 @@
     </div>
   </div>
 
-  <script>
-    document.querySelector('#login-form').addEventListener('submit', async(e)=>{
-      e.preventDefault();
-      const fd=new FormData(e.target);
-      const res=await fetch('/api/login',{method:'POST',body:fd});
-      const json=await res.json();
-      if(json.success){
-        location.href=json.admin?'/admin':'/';
-      }else{
-        document.querySelector('#msg').textContent=json.error||'Login failed';
-      }
-    });
-  </script>
-
+  <!-- 唯一变化：用外链脚本，严格 CSP 下可执行；不要再写纯文本 -->
+  <script src="/js/login.js"></script>
 </body>
 </html>
+``
