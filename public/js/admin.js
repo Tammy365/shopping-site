@@ -59,7 +59,7 @@ $('#form-add-product').addEventListener('submit', async (e)=>{
   await refreshProducts();
 });
 
-// Update Product —— 仅提交非空字段，避免触发后端校验错误
+// Update Product时候仅提交非空字段，避免触发后端校验错误
 $('#form-update-product').addEventListener('submit', async (e)=>{
   e.preventDefault();
 
@@ -67,9 +67,8 @@ $('#form-update-product').addEventListener('submit', async (e)=>{
   const id = fd.get('id');
   fd.delete('id'); // 路径参数里已经有 id 了
 
-  // 关键：移除空字符串字段（浏览器默认也会把空输入框加到 FormData 里）
+  //  移除空字符串字段
   for (const [k, v] of Array.from(fd.entries())) {
-    // File 类型不会是空字符串；文本字段才会
     if (typeof v === 'string' && v.trim() === '') {
       fd.delete(k);
     }

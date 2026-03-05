@@ -1,3 +1,7 @@
 node_modules/
 db/shop.db
 uploads/
+# macOS junk
+.DS_Store
+public/.DS_Store
+

@@ -12,7 +12,7 @@ async function fetchCategoriesMap(){
   return new Map(cats.map(c => [c.name, c]));
 }
 
-/** DOM方式渲染导航（避免转义） */
+/** DOM方式渲染导航避免转义 */
 async function renderNav(){
   const map = await fetchCategoriesMap();
   const ul = $('#nav-categories');
@@ -104,7 +104,6 @@ async function renderProducts(){
   const list = $('#product-list');
   list.innerHTML = '';
   items.forEach(p => list.appendChild(productCardNode(p)));
-// ✅ 新增：为当前列表上的 Add to Cart 绑定事件（无刷新）
   if (window.bindAddToCartButtons) window.bindAddToCartButtons(list);
 }
 

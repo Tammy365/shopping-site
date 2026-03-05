@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Register</title>
+</head>
+<body>
+  <h2>User Registration</h2>
+
+  <form id="reg-form">
+    <label>Email: <input type="email" name="email" required></label><br><br>
+    <label>Password: <input type="password" name="password" required></label><br><br>
+    <label>Repeat Password: <input type="password" name="password2" required></label><br><br>
+
+    <button type="submit">Register</button>
+  </form>
+
+  <p id="msg" style="color:red;"></p>
+
+  <script>
+    document.querySelector("#reg-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = new FormData(e.target);
+
+      if (form.get("password") !== form.get("password2")) {
+        document.querySelector("#msg").textContent = "Passwords do not match!";
+        return;
+      }
+
+      const res = await fetch("/api/register", {
+        method: "POST",
+        body: form
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        location.href = "/login.html";
+      } else {
+        document.querySelector("#msg").textContent = json.error || "Registration failed";
+      }
+    });
+  </script>
+</body>
+</html>

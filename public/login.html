@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Login</title>
+</head>
+<body>
+  <h2>Login</h2>
+
+  <form id="login-form">
+    <label>Email: <input type="email" name="email" required></label><br><br>
+    <label>Password: <input type="password" name="password" required></label><br><br>
+
+    <button type="submit">Login</button>
+  </form>
+
+  <p id="msg" style="color:red;"></p>
+
+  <script>
+    document.querySelector("#login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const res = await fetch("/api/login", {
+        method: "POST",
+        body: form
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (json.admin) location.href = "/admin"; 
+        else location.href = "/";
+      } else {
+        document.querySelector("#msg").textContent = json.error || "Login failed";
+      }
+    });
+  </script>
+</body>
+</html>
