@@ -19,7 +19,7 @@ const app     = express();
 const PORT    = process.env.PORT || 3000;
 const IS_PROD = process.env.NODE_ENV === 'production';
 
-// -------- 安全头（含基础 CSP；后续可升级为 nonce 严格策略）--------
+// -------- 安全头--------
 app.disable('x-powered-by');
 app.use((req, res, next) => {
   res.setHeader(
@@ -62,7 +62,7 @@ function handleValidationErrors(req, res, next) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   next();
-}
+} // 统一错误处理
 function escapeHTML(str = '') {
   return String(str).replace(/[&<>"']/g, m => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'

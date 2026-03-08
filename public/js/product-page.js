@@ -1,5 +1,4 @@
 // public/js/product-page.js
-
 function $(sel){ return document.querySelector(sel); }
 function q(name){ return new URLSearchParams(location.search).get(name); }
 
@@ -8,71 +7,80 @@ function escapeHTML(s=''){
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
   }[m]));
 }
+function isIntLike(v){ return /^[0-9]+$/.test(String(v)); }
 
-// 固定显示顺序（导航显示为 Home, Fruits, Drinks）
-const NAV_ORDER = ['Fruits', 'Drinks'];
-
-// 读取所有分类，返回 Map(name -> categoryObj)
-async function fetchCategoriesMap(){
+// ---- Categories & Navigation ----
+async function fetchCategories(){
   const res = await fetch('/api/categories');
-  const cats = await res.json();
-  return new Map(cats.map(c => [c.name, c]));
+  if (!res.ok) throw new Error('Failed to load categories');
+  return await res.json();
 }
-
-// 渲染顶部导航（固定顺序，但数据从 DB 来）
 async function renderNav(){
-  const map = await fetchCategoriesMap();
-  const ul  = $('#nav-categories');
-  const html = [
-    `<li><a href="/">Home</a></li>`,
-    ...NAV_ORDER
-      .filter(name => map.has(name))
-      .map(name => {
-        const c = map.get(name);
-        return `<li><a href="/?catid=${c.catid}">${escapeHTML(c.name)}</a></li>`;
-      })
-  ];
-  ul.innerHTML = html.join('');
-  return map; // 返回供后续渲染面包屑使用
+  const ul = $('#nav-categories');
+  const cats = await fetchCategories();
+
+  const byName = new Map(cats.map(c => [c.name, c]));
+  const ORDER_FIRST = ['Fruits','Drinks'];
+  const first = ORDER_FIRST.filter(n => byName.has(n)).map(n => byName.get(n));
+  const others = cats.filter(c => !ORDER_FIRST.includes(c.name))
+                     .sort((a,b)=> a.name.localeCompare(b.name));
+  const all = first.concat(others);
+
+  if (ul){
+    ul.innerHTML = [
+      `<li><a href="/">Home</a></li>`,
+      ...all.map(c => `<li><a href="/?catid=${c.catid}">${escapeHTML(c.name)}</a></li>`)
+    ].join('');
+  }
+  return new Map(cats.map(c => [String(c.catid), c]));
 }
 
-// 渲染商品详情
+// ---- Render product (redirect home on invalid pid) ----
 async function renderProduct(){
   const pid = q('pid');
-  if(!pid){
-    $('#product-details').innerText = 'No product id';
-    return;
+
+  // 1) 非整数 → 跳首页
+  if (!pid || !isIntLike(pid)) { location.replace('/'); return; }
+
+  // 2) 拉取商品；非 2xx/错误 JSON → 跳首页
+  let p;
+  try{
+    const resp = await fetch(`/api/product?pid=${encodeURIComponent(pid)}`);
+    if (!resp.ok){ location.replace('/'); return; }
+    p = await resp.json();
+    if (p && p.error) { location.replace('/'); return; }
+  }catch{
+    location.replace('/'); return;
   }
 
-  // 拉取单个产品数据
-  const resp = await fetch(`/api/product?pid=${pid}`);
-  const p    = await resp.json();
-  if(p.error){
-    $('#product-details').innerText = p.error;
-    return;
-  }
-
-  // 解析图片字段（后端把 {big, small} 以 JSON 字符串存到 image）
+  // 3) 解析 image
   let img = null;
-  if (p.image) {
-    try { img = (typeof p.image === 'string') ? JSON.parse(p.image) : p.image; }
-    catch { img = null; }
-  }
+  try{
+    img = p.image ? (typeof p.image === 'string' ? JSON.parse(p.image) : p.image) : null;
+  }catch{ img = null; }
 
-  // 获取分类映射，找出该产品的分类对象（用于“返回分类”和面包屑显示）
-  const map     = await fetchCategoriesMap();
-  const catObj  = [...map.values()].find(c => String(c.catid) === String(p.catid));
+  // 4) 渲染导航并构建面包屑与“Back to Category”
+  let catsMap = null;
+  try{ catsMap = await renderNav(); }catch{}
+
+  const catObj  = catsMap ? catsMap.get(String(p.catid)) : null;
   const catName = catObj ? catObj.name : 'Category';
   const catHref = catObj ? `/?catid=${catObj.catid}` : '/';
 
-  // ✅ 使用 <img> 标签渲染大图；链接使用 <a href="..."> 标准写法
-  $('#product-details').innerHTML = `
+  const priceNum = Number(p.price);
+  const priceHTML = Number.isFinite(priceNum) ? `HK$${priceNum.toFixed(2)}` : 'HK$—';
+
+  const mount = $('#product-details');
+  const breadcrumb = $('#breadcrumb');
+  if (!mount) { location.replace('/'); return; }
+
+  mount.innerHTML = `
     <div class="product-image">
-      ${img && img.big ? `<img src="${img.big}" alt="${escapeHTML(p.name)}">` : ''}
+      ${img && img.big ? `<img src="${img.big}" alt="${escapeHTML(p.name || '')}" />` : ''}
     </div>
     <div class="product-info">
-      <h2>${escapeHTML(p.name)}</h2>
-      <p class="price">HK$${Number(p.price).toFixed(2)}</p>
+      <h2>${escapeHTML(p.name || '')}</h2>
+      <p class="price">${priceHTML}</p>
       <p class="description">${escapeHTML(p.description || '')}</p>
       <div class="quantity-controls">
         <input type="number" min="1" value="1" class="quantity">
@@ -84,19 +92,16 @@ async function renderProduct(){
     </div>
   `;
 
-  // ✅ 面包屑（可点击）
-  $('#breadcrumb').innerHTML = `
-    <a href="/">Home</a> &gt;
-    <a href="${catHref}">${escapeHTML(catName)}</a> &gt;
-    <span>${escapeHTML(p.name)}</span>
-  `;
+  if (breadcrumb) {
+    breadcrumb.innerHTML =
+      `<a href="/">Home</a> &gt; <a href="${catHref}">${escapeHTML(catName)}</a> &gt; <span>${escapeHTML(p.name || '')}</span>`;
+  }
 
-  // 渲染完成后绑定 “Add to Cart” 按钮
   if (window.bindProductPageAdd) window.bindProductPageAdd(pid);
 }
 
-// 启动
+// ---- bootstrap ----
 (async function init(){
-  await renderNav();
+  try{ await renderNav(); }catch{}
   await renderProduct();
 })();
