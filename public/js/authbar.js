@@ -14,10 +14,11 @@ async function refreshAuthBar() {
     if (!bar) return;
 
     if (me.loggedIn) {
-      // ✅ 使用真正的 <a> 标签（管理员多一个 Admin 按钮）
+      // 管理员多一个 Admin 
       bar.innerHTML =
         `Hello, ${escapeHTML(me.email)}${me.admin ? ' (admin)' : ''} · ` +
         (me.admin ? `<a href="/admin">Admin</a> · ` : ``) +
+        `<a href="/my-orders.html">My Orders</a> · ` + 
         `<a href="/change-password.html">Change Password</a> · ` +
         `<a href="#" id="logout-link">Logout</a>`;
 

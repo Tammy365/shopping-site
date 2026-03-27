@@ -69,3 +69,23 @@ WHERE pid=4;
 INSERT INTO users (email, password, is_admin) VALUES
 ('admin@example.com', 'PLACEHOLDER', 1),
 ('user@example.com',  'PLACEHOLDER', 0);
+
+CREATE TABLE IF NOT EXISTS orders (
+  orderid     INTEGER PRIMARY KEY AUTOINCREMENT,
+  userid      INTEGER,
+  digest      TEXT NOT NULL,
+  salt        TEXT NOT NULL,
+  currency    TEXT NOT NULL,
+  total       REAL NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'pending',
+  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(userid) REFERENCES users(userid)
+);
+
+CREATE TABLE IF NOT EXISTS order_items (
+  orderid     INTEGER,
+  pid         INTEGER,
+  qty         INTEGER,
+  price       REAL,
+  FOREIGN KEY(orderid) REFERENCES orders(orderid)
+);

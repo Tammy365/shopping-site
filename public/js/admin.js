@@ -3,7 +3,6 @@
 function $(sel){ return document.querySelector(sel); }
 function create(el, attrs={}){ const e=document.createElement(el); Object.assign(e, attrs); return e; }
 
-// Robust fetch helper: throw on non-2xx and return parsed json
 async function fetchJSON(url, opts){
   const res = await fetch(url, opts);
   let data = null;
@@ -23,7 +22,7 @@ async function ensureCSRF(){
   return CSRF_TOKEN;
 }
 
-// ==== 顶部状态 + Logout ====
+// 顶部状态 + Logout 
 async function showLoginStatus(){
   try{
     const me = await fetchJSON('/api/me');
@@ -42,7 +41,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const btn = $('#logout-btn'); if (btn) btn.addEventListener('click', doLogout);
 });
 
-// ====== 渲染分类与商品 ======
+// 渲染分类与商品
 async function refreshCategories(){
   const cats = await fetchJSON('/api/categories');
   const catList   = $('#cat-list');
@@ -97,7 +96,6 @@ async function refreshProducts(){
   }
 }
 
-// ====== 写操作：全部附带 CSRF ======
 
 // Add Category
 const formAddCat = $('#form-add-cat');
@@ -128,14 +126,14 @@ if (btnDelCat) btnDelCat.addEventListener('click', async ()=>{
   }catch(err){ alert('Delete category failed:\n' + (err.message||'')); }
 });
 
-// Add Product  —— 关键：把 csrf 也放到 URL query，避免 validateCSRF 先于 multer 时拿不到 body.csrf
+// Add Product.把 csrf 也放到 URL query，避免 validateCSRF 先于 multer 时拿不到 body.csrf
 const formAddProd = $('#form-add-product');
 if (formAddProd) formAddProd.addEventListener('submit', async (e)=>{
   e.preventDefault();
   try{
     const fd = new FormData(e.target);
     fd.append('csrf', await ensureCSRF()); // 保留
-    const url = `/api/products?csrf=${encodeURIComponent(await ensureCSRF())}`; // 关键
+    const url = `/api/products?csrf=${encodeURIComponent(await ensureCSRF())}`; 
     const res = await fetch(url, { method:'POST', body: fd });
     let json = null; try{ json = await res.json(); }catch{}
     if (!res.ok) throw new Error(json?.error || (Array.isArray(json?.errors) ? JSON.stringify(json.errors) : `HTTP ${res.status}`));
@@ -144,14 +142,13 @@ if (formAddProd) formAddProd.addEventListener('submit', async (e)=>{
   }catch(err){ alert('Add product failed:\n' + (err.message||'')); }
 });
 
-// Update Product —— 同理把 csrf 也放在 URL
+// Update Product 
 const formUpdProd = $('#form-update-product');
 if (formUpdProd) formUpdProd.addEventListener('submit', async (e)=>{
   e.preventDefault();
   try{
     const fd = new FormData(e.target);
     const id = fd.get('id'); fd.delete('id');
-    // 去掉空白字段，表示“不修改”
     for (const [k,v] of Array.from(fd.entries())){
       if (typeof v === 'string' && v.trim() === '') fd.delete(k);
     }
@@ -165,7 +162,7 @@ if (formUpdProd) formUpdProd.addEventListener('submit', async (e)=>{
   }catch(err){ alert('Update failed:\n' + (err.message||'')); }
 });
 
-// Delete Product（你原来就是 query 带 csrf，保留）
+// Delete Product
 const formDelProd = $('#form-del-product');
 if (formDelProd) formDelProd.addEventListener('submit', async (e)=>{
   e.preventDefault();
@@ -178,9 +175,34 @@ if (formDelProd) formDelProd.addEventListener('submit', async (e)=>{
   }catch(err){ alert('Delete failed:\n' + (err.message||'')); }
 });
 
-// ====== 启动 ======
+
 document.addEventListener('DOMContentLoaded', async ()=>{
   await ensureCSRF();        // 预拉一次，确保 cookie/set-cookie 就绪
   await refreshCategories();
   await refreshProducts();
 });
+
+// ========== Phase 5: Load Orders ==========
+
+async function loadOrders() {
+    const res = await fetch('/api/orders');
+    const orders = await res.json();
+
+    const list = document.getElementById('order-list');
+    if (!list) return;
+
+    list.innerHTML = orders.map(o => `
+        <li>
+            <strong>Order #${o.orderid}</strong> — ${o.status} — HK$${o.total}
+            <br>Created: ${o.created_at}
+            <details>
+                <summary>Items</summary>
+                <ul>
+                    ${o.items.map(i =>
+                        `<li>PID ${i.pid} × ${i.qty} @ HK$${i.price}</li>`
+                    ).join('')}
+                </ul>
+            </details>
+        </li>
+    `).join('');
+}

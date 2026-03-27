@@ -5,7 +5,6 @@
   <title>Admin Login</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
 
-  <!-- ↓↓↓ 保留你原有样式（与上传版本一致） ↓↓↓ -->
   <style>
     :root{
       --brand:#1976D2; --brand-d:#0d47a1;
@@ -60,7 +59,6 @@
     .links a{ color:var(--brand); text-decoration:none; font-size:.9rem }
     .links a:hover{ text-decoration:underline }
 
-    /* 你之前的宽度微调（保留） */
     .card{ width:min(430px, 92vw); }
     #login-form label{ display:block; margin-bottom:.6rem; }
     input[type="email"], input[type="password"]{
@@ -96,7 +94,6 @@
     </div>
   </div>
 
-  <!-- 唯一变化：用外链脚本，严格 CSP 下可执行；不要再写纯文本 -->
   <script src="/js/login.js"></script>
 </body>
 </html>

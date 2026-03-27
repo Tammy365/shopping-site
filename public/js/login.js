@@ -14,7 +14,7 @@
       const json = await res.json();
 
       if (json && json.success) {
-        // 与你原逻辑一致：管理员进 /admin，普通用户进 /
+        // 管理员进 /admin，普通用户进 /
         location.href = json.admin ? '/admin' : '/';
       } else {
         msg.textContent = (json && json.error) || 'Login failed';

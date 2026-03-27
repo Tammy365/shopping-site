@@ -1,4 +1,3 @@
-// server.js — Phase 2B + Phase 4 (Auth + CSRF + Change Password + Security)
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
@@ -137,6 +136,25 @@ function validateCSRF(req, res, next) {
     return res.status(403).json({ error: 'CSRF token invalid' });
   }
   next();
+}
+
+// -------- PayPal Phase 5 Integration --------
+// 填写你的 Sandbox Key
+const PAYPAL_CLIENT = 'AUYzKFkeCFRpqkipYD1PAtIQOr9536RvXk8AeMcqCbUUHLv6XU6vb_dJNmrqbLpfh9rThpkidOx5zIvD';
+const PAYPAL_SECRET = 'EIoA84h1sQtwcCyIbtP4Is7U0PbZZaf-sk_79QJizkSQVpGVPJpvyyJhtakp1zrkOnEcClqVPwntB3z2';
+const PAYPAL_API = 'https://api-m.sandbox.paypal.com';
+
+async function paypalGetToken() {
+  const auth = Buffer.from(PAYPAL_CLIENT + ':' + PAYPAL_SECRET).toString('base64');
+  const res = await fetch(PAYPAL_API + '/v1/oauth2/token', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Basic ' + auth,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: 'grant_type=client_credentials'
+  });
+  return await res.json();
 }
 
 // -------- 认证：登录 / 注册 / 登出 / 我是谁 --------
@@ -442,6 +460,185 @@ app.delete('/api/products/:id',
     });
   }
 );
+
+// ========== Checkout (Phase 5) ==========
+// 接收购物车 items = [{pid, qty}]
+app.post('/api/checkout', requireLogin, async (req, res) => {
+  const items = req.body?.items;
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Empty cart' });
+  }
+
+  for (const it of items) {
+    if (!Number.isInteger(it.pid) || !Number.isInteger(it.qty) || it.qty <= 0) {
+      return res.status(400).json({ error: 'Invalid item' });
+    }
+  }
+
+  // 从 DB 获取实时价格
+  let total = 0;
+  const list = [];
+
+  for (const it of items) {
+    const row = await new Promise(ok => {
+      db.get('SELECT pid, price FROM products WHERE pid=?', [it.pid], (e, r) => ok(r));
+    });
+    if (!row) return res.status(400).json({ error: 'Product not found' });
+
+    total += row.price * it.qty;
+    list.push({ pid: row.pid, qty: it.qty, price: row.price });
+  }
+
+  const currency = 'HKD';
+  const merchant = 'merchant@example.com';
+  const salt = crypto.randomBytes(16).toString('hex');
+
+  const toHash = [
+    currency,
+    merchant,
+    salt,
+    ...list.map(i => `${i.pid}:${i.qty}:${i.price}`),
+    total.toFixed(2)
+  ].join('|');
+
+  const digest = crypto.createHash('sha256').update(toHash).digest('hex');
+
+  // 写入 orders
+  const orderid = await new Promise(ok => {
+    db.run(
+      'INSERT INTO orders(userid, digest, salt, currency, total, status) VALUES (?,?,?,?,?,?)',
+      [req.user.userid, digest, salt, currency, total, 'pending'],
+      function () { ok(this.lastID); }
+    );
+  });
+
+  // 写入 order_items
+  for (const i of list) {
+    db.run(
+      'INSERT INTO order_items(orderid, pid, qty, price) VALUES (?,?,?,?)',
+      [orderid, i.pid, i.qty, i.price]
+    );
+  }
+
+  // 前端需要跳转至 pay.html?orderid=xxx
+  res.json({
+    success: true,
+    orderid,
+    digest,
+    redirect: `/pay.html?orderid=${orderid}`
+  });
+});
+
+// ========== PayPal Create Order ==========
+app.post('/api/paypal/create', requireLogin, async (req, res) => {
+  const { orderid } = req.body;
+
+  const row = await new Promise(ok => {
+    db.get('SELECT total, currency FROM orders WHERE orderid=?', [orderid], (e, r) => ok(r));
+  });
+  if (!row) return res.status(400).json({ error: 'Order not found' });
+
+  const token = await paypalGetToken();
+
+  const r2 = await fetch(PAYPAL_API + '/v2/checkout/orders', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token.access_token}`
+    },
+    body: JSON.stringify({
+      intent: 'CAPTURE',
+      purchase_units: [{
+        amount: { currency_code: row.currency, value: row.total }
+      }],
+      application_context: {
+        return_url: `http://localhost:3000/api/paypal/capture?orderid=${orderid}`,
+        cancel_url: `http://localhost:3000/`
+      }
+    })
+  });
+
+  const json = await r2.json();
+  res.json(json);
+});
+
+
+// ========== PayPal Capture ==========
+app.get('/api/paypal/capture', async (req, res) => {
+  const { orderid, token } = req.query;
+
+  const order = await new Promise(ok => {
+    db.get('SELECT * FROM orders WHERE orderid=?', [orderid], (e, r) => ok(r));
+  });
+  if (!order) return res.send('Order not found');
+
+  const items = await new Promise(ok => {
+    db.all('SELECT * FROM order_items WHERE orderid=?', [orderid], (e, r) => ok(r));
+  });
+
+  // 重建 digest
+  const toHash = [
+    order.currency,
+    'merchant@example.com',
+    order.salt,
+    ...items.map(i => `${i.pid}:${i.qty}:${i.price}`),
+    order.total.toFixed(2)
+  ].join('|');
+
+  const digest2 = crypto.createHash('sha256').update(toHash).digest('hex');
+
+  if (digest2 !== order.digest) {
+    return res.send('Digest mismatch!');
+  }
+
+  db.run('UPDATE orders SET status=? WHERE orderid=?', ['paid', orderid]);
+
+  return res.redirect('/');
+});
+
+// ========== Admin: All Orders ==========
+app.get('/api/orders', requireAdmin, async (req, res) => {
+  const rows = await new Promise(ok => {
+    db.all('SELECT * FROM orders ORDER BY orderid DESC', [], (e, r) => ok(r));
+  });
+
+  const out = [];
+  for (const o of rows) {
+    const items = await new Promise(ok => {
+      db.all('SELECT oi.pid, oi.qty, oi.price, p.name FROM order_items oi LEFT JOIN products p ON oi.pid = p.pid WHERE oi.orderid = ?', [o.orderid], (e, r) => ok(r));
+    });
+    out.push({ ...o, items });
+  }
+
+  res.json(out);
+});
+
+
+// ========== User: My Recent Orders ==========
+app.get('/api/my-orders', requireLogin, async (req, res)=>{
+  const rows = await new Promise(ok=>{
+    db.all(
+      'SELECT * FROM orders WHERE userid=? ORDER BY orderid DESC LIMIT 5',
+      [req.user.userid],
+      (e,r)=>ok(r)
+    );
+  });
+
+  const out = [];
+  for(const o of rows){
+    const items = await new Promise(ok=>{
+      db.all(`
+        SELECT oi.pid, oi.qty, oi.price, p.name
+        FROM order_items oi
+        LEFT JOIN products p ON oi.pid = p.pid
+        WHERE oi.orderid = ?
+      `, [o.orderid], (e,r)=>ok(r));
+    });
+    out.push({ ...o, items });
+  }
+
+  res.json(out);
+});
 
 // -------- 主页 --------
 app.get('/', (req, res) => {

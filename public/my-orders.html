@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My Recent Orders</title>
+
+  <!-- 全站样式 -->
+  <link rel="stylesheet" href="css/styles.css">
+
+  <style>
+    .orders-container {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    }
+
+    .order-card {
+      border: 1px solid #dfe3e8;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    .order-header {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #1a1a1a;
+    }
+
+    .order-meta {
+      font-size: 14px;
+      color: #6b6b6b;
+      margin-bottom: 10px;
+    }
+
+    .order-items-title {
+      font-weight: 600;
+      margin-top: 12px;
+      margin-bottom: 6px;
+      font-size: 15px;
+    }
+
+    .order-items {
+      margin-left: 16px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .order-items li {
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- 顶部登录条 -->
+  <script src="js/authbar.js"></script>
+
+  <div class="orders-container">
+    <h1>My Recent Orders</h1>
+    <div id="my-order-list"></div>
+  </div>
+
+  <!-- 渲染订单的脚本 -->
+  <script src="js/my-orders.js"></script>
+
+</body>
+</html>

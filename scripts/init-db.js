@@ -1,109 +1,107 @@
-// scripts/init-db.js
-// 初始化数据库（执行 setup.sql + 为默认用户写入 bcrypt 哈希）
-//
-// 用法：npm run init-db
-// 效果：幂等运行，重建表结构；确保 admin/user 两个账号存在，并把密码改为安全哈希。
+/**
+ * scripts/init-db.js
+ * 
+ * This script initializes the SQLite database used by the shopping-site.
+ * It follows the structure & style of your existing server.js DB usage,
+ * and now includes the Phase 5 required tables: orders & order_items.
+ */
 
-import fs from 'fs';
+import sqlite3 from 'sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import sqlite3 from 'sqlite3';
-import bcrypt from 'bcrypt';
 
-// ===== 计算当前目录（兼容 ES Module）=====
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// ===== 路径配置 =====
-const DB_FILE = path.join(__dirname, '..', 'db', 'shop.db');
-const SETUP_SQL_FILE = path.join(__dirname, '..', 'db', 'setup.sql');
-
-// ===== 密码哈希配置 =====
-const SALT_ROUNDS = 12;
-
-// 初始化默认账户（仅用于初始化）
-const DEFAULT_USERS = [
-  { email: 'admin@example.com', password: 'AdminPassword123', is_admin: 1 },
-  { email: 'user@example.com',  password: 'UserPassword123',  is_admin: 0 },
-];
-
-// ===== 读取建库脚本 =====
-if (!fs.existsSync(SETUP_SQL_FILE)) {
-  console.error(`❌ setup.sql not found at: ${SETUP_SQL_FILE}`);
-  process.exit(1);
-}
-const setupSql = fs.readFileSync(SETUP_SQL_FILE, 'utf-8');
-
-// ===== 打开数据库 =====
 sqlite3.verbose();
-const db = new sqlite3.Database(DB_FILE);
 
-// Promise 封装
-function exec(sql) {
-  return new Promise((resolve, reject) => {
-    db.exec(sql, err => (err ? reject(err) : resolve()));
-  });
-}
-function run(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve(this);
-    });
-  });
-}
-function get(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
-  });
-}
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
 
-// 生成 bcrypt 哈希
-async function hashPassword(plain) {
-  return await bcrypt.hash(plain, SALT_ROUNDS);
-}
+// Database: shop.db (same as server.js)
+const dbPath = path.join(__dirname, '..', 'db', 'shop.db');
+const db = new sqlite3.Database(dbPath);
 
-// 确保两名默认用户存在，并为其写入哈希密码
-async function ensureDefaultUsers() {
-  // 1) 保证用户存在（如果 setup.sql 没插入，这里会补）
-  for (const u of DEFAULT_USERS) {
-    await run(
-      `INSERT OR IGNORE INTO users(email, password, is_admin)
-       VALUES (?, 'PLACEHOLDER', ?);`,
-      [u.email, u.is_admin]
+// Enable foreign keys
+db.serialize(() => {
+  db.run('PRAGMA foreign_keys = ON;');
+
+  // ========== USERS ==========
+  db.run(`
+    CREATE TABLE IF NOT EXISTS users (
+      userid      INTEGER PRIMARY KEY AUTOINCREMENT,
+      email       TEXT UNIQUE NOT NULL,
+      password    TEXT NOT NULL,
+      is_admin    INTEGER NOT NULL DEFAULT 0
     );
-  }
+  `);
 
-  // 2) 写入哈希密码（覆盖 PLACEHOLDER 或旧密码）
-  for (const u of DEFAULT_USERS) {
-    const hashed = await hashPassword(u.password);
-    await run(
-      `UPDATE users SET password=? WHERE email=?;`,
-      [hashed, u.email]
+  // ========== SESSIONS ==========
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      token       TEXT PRIMARY KEY,
+      userid      INTEGER,
+      FOREIGN KEY(userid) REFERENCES users(userid)
+        ON DELETE CASCADE
     );
-  }
-}
+  `);
 
-async function main() {
-  try {
-    // 外键开启
-    await exec('PRAGMA foreign_keys = ON;');
+  // ========== CATEGORIES ==========
+  db.run(`
+    CREATE TABLE IF NOT EXISTS categories (
+      catid       INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL
+    );
+  `);
 
-    // 执行建库脚本（DROP + CREATE + 种子数据）
-    await exec(setupSql);
+  // ========== PRODUCTS ==========
+  db.run(`
+    CREATE TABLE IF NOT EXISTS products (
+      pid         INTEGER PRIMARY KEY AUTOINCREMENT,
+      catid       INTEGER,
+      name        TEXT NOT NULL,
+      price       REAL NOT NULL,
+      description TEXT,
+      image       TEXT,
+      FOREIGN KEY(catid) REFERENCES categories(catid)
+        ON DELETE SET NULL
+    );
+  `);
 
-    // 确保默认用户存在并写入安全哈希
-    await ensureDefaultUsers();
+  // ========================================
+  // 🌟 PHASE 5 NEW TABLES
+  // ========================================
 
-    console.log('✅ Database initialized successfully.');
-    console.log('   -> Default admin login: admin@example.com / AdminPassword123');
-    console.log('   -> Default user  login: user@example.com  / UserPassword123');
-  } catch (err) {
-    console.error('❌ DB setup failed:', err.message || err);
-    process.exit(1);
-  } finally {
-    db.close();
-  }
-}
+  // ========== ORDERS ==========
+  // Stores ONE order record per checkout
+  db.run(`
+    CREATE TABLE IF NOT EXISTS orders (
+      orderid     INTEGER PRIMARY KEY AUTOINCREMENT,
+      userid      INTEGER,
+      digest      TEXT NOT NULL,      -- SHA256 summary of order integrity fields
+      salt        TEXT NOT NULL,      -- random salt
+      currency    TEXT NOT NULL,      -- e.g. HKD
+      total       REAL NOT NULL,      -- computed server-side total
+      status      TEXT NOT NULL DEFAULT 'pending',  -- pending / paid / failed
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(userid) REFERENCES users(userid)
+        ON DELETE SET NULL
+    );
+  `);
 
-main();
+  // ========== ORDER ITEMS ==========
+  // Stores product list per order
+  db.run(`
+    CREATE TABLE IF NOT EXISTS order_items (
+      orderid     INTEGER,
+      pid         INTEGER,
+      qty         INTEGER,
+      price       REAL,
+      FOREIGN KEY(orderid) REFERENCES orders(orderid)
+        ON DELETE CASCADE,
+      FOREIGN KEY(pid) REFERENCES products(pid)
+        ON DELETE SET NULL
+    );
+  `);
+
+  console.log('Database initialized with Phase 5 tables successfully!');
+});
+
+db.close();

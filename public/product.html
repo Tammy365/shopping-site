@@ -7,29 +7,25 @@
   <link rel="stylesheet" href="/css/styles.css"/>
 </head>
 <body>
-  <!-- 购物车开关（与你的静态结构一致） -->
   <input type="checkbox" id="cart-toggle" hidden>
 
   <header>
     <h1>Shopping Site</h1>
     <nav>
-      <!-- 顶部导航（固定顺序：Home, Fruits, Drinks；从 DB 读取再按顺序渲染） -->
       <ul id="nav-categories"></ul>
     </nav>
     <label for="cart-toggle" class="cart-icon">🛒</label>
   </header>
 
   <main>
-    <!-- 商品详情主体：图片 + 信息（与你的 CSS 类名完全对齐） -->
     <section class="product-details" id="product-details">
-      <!-- 将由脚本动态填充 -->
     </section>
 
     <!-- 面包屑（Home > Category > Product） -->
     <div class="breadcrumb" id="breadcrumb"></div>
   </main>
 
-  <!-- 购物车侧栏外壳（Phase 3 再实现逻辑） -->
+
   <aside class="shopping-list">
     <h3>Shopping Cart</h3>
     <div class="cart-items" id="cart-items"></div>
@@ -46,7 +42,6 @@
     <p>© 2026 My Shopping Site. All rights reserved.</p>
   </footer>
 
-  <!-- ✅ Phase 3：先加载购物车脚本 -->
   <script src="/js/cart.js"></script>
 
   <script src="/js/product-page.js"></script>

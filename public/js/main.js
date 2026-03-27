@@ -9,18 +9,13 @@ function escapeHTML(s=''){
 }
 function isIntLike(v){ return /^[0-9]+$/.test(String(v)); }
 
-// ---- Categories & Navigation ----
+
 async function fetchCategories(){
   const res = await fetch('/api/categories');
   if (!res.ok) throw new Error('Failed to load categories');
   return await res.json(); // [{catid, name}]
 }
 
-/**
- * Render top nav:
- * Home + Fruits/Drinks first (if exist) + others (alphabetically)
- * Returns: Map(catid(string) -> categoryObj)
- */
 async function renderNav(){
   const ul = $('#nav-categories');
   const cats = await fetchCategories();
@@ -88,21 +83,21 @@ function productCardNode(p){
   return card;
 }
 
-// ---- Render product list (redirect home on invalid catid) ----
+// Render product list (redirect home on invalid catid) ----
 async function renderProducts(){
   const list = $('#product-list'); if (!list) return;
 
   const catidParam = getQuery('catid');
 
-  // 1) 非整数 → 跳首页
+  // 非整数跳首页
   if (catidParam != null && catidParam !== '' && !isIntLike(catidParam)) {
     location.replace('/'); return;
   }
 
-  // 2) 整数但不存在 → 跳首页（解决 catid=3 被删后的情况）
+  // 整数但不存在跳首页解决 catid 被删后的情况
   let url = '/api/products';
   try{
-    const catsMap = await renderNav(); // 同时渲染导航
+    const catsMap = await renderNav(); 
     if (catidParam != null && catidParam !== '') {
       const exists = catsMap && catsMap.has(String(catidParam));
       if (!exists) { location.replace('/'); return; }
@@ -112,7 +107,7 @@ async function renderProducts(){
     location.replace('/'); return;
   }
 
-  // 3) 拉取产品；失败也跳首页（严谨按你的要求）
+  // 拉取产品失败也跳首页
   try{
     const res = await fetch(url);
     if (!res.ok) { location.replace('/'); return; }
