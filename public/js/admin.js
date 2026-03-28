@@ -176,33 +176,45 @@ if (formDelProd) formDelProd.addEventListener('submit', async (e)=>{
 });
 
 
+
+
+async function loadOrders(){
+  const container = document.getElementById('admin-orders');
+  if (!container) return;
+
+  try{
+    const orders = await fetchJSON('/api/orders');
+
+    // 只显示已支付订单
+    const paidOrders = orders.filter(o => o.status === 'paid');
+
+    if (paidOrders.length === 0){
+      container.innerHTML = '<p style="color:#777;">No paid orders yet.</p>';
+      return;
+    }
+
+    container.innerHTML = paidOrders.map(o => `
+      <div style="padding:10px;margin-bottom:12px;border:1px solid #ddd;border-radius:6px;">
+        <strong>Order #${o.orderid}</strong><br>
+        Total: HK$${o.total}<br>
+        Status: ${o.status}<br>
+        Created: ${o.created_at}
+        <ul>
+          ${o.items.map(i =>
+            `<li>${i.name} × ${i.qty} @ HK$${i.price}</li>`
+          ).join('')}
+        </ul>
+      </div>
+    `).join('');
+  }catch(err){
+    container.innerHTML = `<p style="color:#e74c3c;">Failed to load orders</p>`;
+  }
+}
+
+// 页面加载时统一初始化
 document.addEventListener('DOMContentLoaded', async ()=>{
-  await ensureCSRF();        // 预拉一次，确保 cookie/set-cookie 就绪
+  await ensureCSRF();
   await refreshCategories();
   await refreshProducts();
+  await loadOrders();          
 });
-
-// ========== Phase 5: Load Orders ==========
-
-async function loadOrders() {
-    const res = await fetch('/api/orders');
-    const orders = await res.json();
-
-    const list = document.getElementById('order-list');
-    if (!list) return;
-
-    list.innerHTML = orders.map(o => `
-        <li>
-            <strong>Order #${o.orderid}</strong> — ${o.status} — HK$${o.total}
-            <br>Created: ${o.created_at}
-            <details>
-                <summary>Items</summary>
-                <ul>
-                    ${o.items.map(i =>
-                        `<li>PID ${i.pid} × ${i.qty} @ HK$${i.price}</li>`
-                    ).join('')}
-                </ul>
-            </details>
-        </li>
-    `).join('');
-}
