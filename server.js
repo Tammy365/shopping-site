@@ -15,6 +15,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
 const app     = express();
+app.set('trust proxy', true);
 const PORT    = process.env.PORT || 3000;
 const IS_PROD = process.env.NODE_ENV === 'production';
 
@@ -534,13 +535,21 @@ app.post('/api/paypal/create', requireLogin, async (req, res) => {
   const { orderid } = req.body;
 
   const row = await new Promise(ok => {
-    db.get('SELECT total, currency FROM orders WHERE orderid=?', [orderid], (e, r) => ok(r));
+    db.get(
+      'SELECT total, currency FROM orders WHERE orderid=?',
+      [orderid],
+      (e, r) => ok(r)
+    );
   });
   if (!row) return res.status(400).json({ error: 'Order not found' });
 
+  // ✅ 动态生成当前服务器地址
+
+  const host = `${req.protocol}://${req.get('host')}`;
+
   const token = await paypalGetToken();
 
-  const r2 = await fetch(PAYPAL_API + '/v2/checkout/orders', {
+  const r2 = await fetch(`${PAYPAL_API}/v2/checkout/orders`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -549,11 +558,14 @@ app.post('/api/paypal/create', requireLogin, async (req, res) => {
     body: JSON.stringify({
       intent: 'CAPTURE',
       purchase_units: [{
-        amount: { currency_code: row.currency, value: row.total }
+        amount: {
+          currency_code: row.currency,
+          value: row.total
+        }
       }],
       application_context: {
-        return_url: `http://localhost:3000/api/paypal/capture?orderid=${orderid}`,
-        cancel_url: `http://localhost:3000/`
+        return_url: `${host}/api/paypal/capture?orderid=${orderid}`,
+        cancel_url: `${host}/`
       }
     })
   });
