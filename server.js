@@ -535,92 +535,129 @@ app.post('/api/checkout', requireLogin, async (req, res) => {
 });
 
 
-app.post('/api/paypal/create', requireLogin, async (req, res) => {
-  const { orderid } = req.body;
+app.post('/api/paypal/create',
+  requireLogin,
+  body('orderid').isInt(),
+  handleValidationErrors,
+  async (req, res) => {
+    const orderid = Number(req.body.orderid);
 
-  const row = await new Promise(ok => {
-    db.get(
-      'SELECT total, currency FROM orders WHERE orderid=?',
-      [orderid],
-      (e, r) => ok(r)
-    );
-  });
-  if (!row) return res.status(400).json({ error: 'Order not found' });
+    const row = await new Promise(ok => {
+      db.get(
+        'SELECT orderid, userid, total, currency, status FROM orders WHERE orderid=?',
+        [orderid],
+        (e, r) => ok(r)
+      );
+    });
+    if (!row) return res.status(400).json({ error: 'Order not found' });
+    if (row.status === 'paid') return res.status(400).json({ error: 'Order already paid' });
+    if (row.userid !== req.user.userid && !req.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
 
+    const host = `${req.protocol}://${req.get('host')}`;
+    const token = await paypalGetToken();
 
-
-  const host = `${req.protocol}://${req.get('host')}`;
-
-  const token = await paypalGetToken();
-
-  const r2 = await fetch(`${PAYPAL_API}/v2/checkout/orders`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token.access_token}`
-    },
-    body: JSON.stringify({
-      intent: 'CAPTURE',
-      purchase_units: [{
-        amount: {
-          currency_code: row.currency,
-          value: row.total
+    const r2 = await fetch(`${PAYPAL_API}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token.access_token}`
+      },
+      body: JSON.stringify({
+        intent: 'CAPTURE',
+        purchase_units: [{
+          amount: {
+            currency_code: row.currency,
+            value: Number(row.total).toFixed(2)
+          }
+        }],
+        application_context: {
+          return_url: `${host}/api/paypal/capture?orderid=${orderid}`,
+          cancel_url: `${host}/`
         }
-      }],
-      application_context: {
-        return_url: `${host}/api/paypal/capture?orderid=${orderid}`,
-        cancel_url: `${host}/`
-      }
-    })
-  });
+      })
+    });
 
-  const json = await r2.json();
-  res.json(json);
-});
+    const json = await r2.json();
+    res.json(json);
+  }
+);
 
 
 
 app.get('/api/paypal/capture', async (req, res) => {
-  const { orderid, token } = req.query;
+  const orderid = Number(req.query?.orderid);
+  const paypalOrderId = String(req.query?.token || '');
+
+  if (!Number.isInteger(orderid) || !paypalOrderId) return res.status(400).send('Bad request');
 
   const order = await new Promise(ok => {
-    db.get('SELECT * FROM orders WHERE orderid=?', [orderid], (e, r) => ok(r));
+    db.get(
+      'SELECT orderid, userid, digest, salt, currency, total, status FROM orders WHERE orderid=?',
+      [orderid],
+      (e, r) => ok(r)
+    );
   });
-  if (!order) return res.send('Order not found');
+  if (!order) return res.status(404).send('Order not found');
+  if (order.status === 'paid') return res.redirect('/');
+
+  const access = await paypalGetToken();
+  const captureRes = await fetch(`${PAYPAL_API}/v2/checkout/orders/${encodeURIComponent(paypalOrderId)}/capture`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${access.access_token}`
+    }
+  });
+  const captureJson = await captureRes.json().catch(() => ({}));
+  if (!captureRes.ok) return res.redirect('/');
+  if (captureJson?.status && captureJson.status !== 'COMPLETED') return res.redirect('/');
+
+  const capture0 =
+    captureJson?.purchase_units?.[0]?.payments?.captures?.[0] ||
+    captureJson?.purchase_units?.[0]?.payments?.captures?.[captureJson?.purchase_units?.[0]?.payments?.captures?.length - 1];
+  if (!capture0 || (capture0?.status && capture0.status !== 'COMPLETED')) return res.redirect('/');
+
+  const paidCurrency = capture0?.amount?.currency_code;
+  const paidValue = Number(capture0?.amount?.value);
+
+  if (paidCurrency !== order.currency || !Number.isFinite(paidValue)) return res.redirect('/');
+  if (Math.abs(paidValue - Number(order.total)) > 0.01) return res.redirect('/');
 
   const items = await new Promise(ok => {
-    db.all('SELECT * FROM order_items WHERE orderid=?', [orderid], (e, r) => ok(r));
+    db.all('SELECT pid, qty, price FROM order_items WHERE orderid=?', [orderid], (e, r) => ok(r || []));
   });
-
 
   const toHash = [
     order.currency,
     'merchant@example.com',
     order.salt,
     ...items.map(i => `${i.pid}:${i.qty}:${i.price}`),
-    order.total.toFixed(2)
+    Number(order.total).toFixed(2)
   ].join('|');
 
   const digest2 = crypto.createHash('sha256').update(toHash).digest('hex');
-
-  if (digest2 !== order.digest) {
-    return res.send('Digest mismatch!');
-  }
+  if (digest2 !== order.digest) return res.redirect('/');
 
   db.run('UPDATE orders SET status=? WHERE orderid=?', ['paid', orderid]);
-
   return res.redirect('/');
 });
 
 app.get('/api/orders', requireAdmin, async (req, res) => {
   const rows = await new Promise(ok => {
-    db.all('SELECT * FROM orders ORDER BY orderid DESC', [], (e, r) => ok(r));
+    db.all(
+      `SELECT o.orderid, o.userid, u.email AS user_email, o.currency, o.total, o.status, o.created_at
+       FROM orders o
+       LEFT JOIN users u ON o.userid = u.userid
+       ORDER BY o.orderid DESC`,
+      [],
+      (e, r) => ok(r || [])
+    );
   });
 
   const out = [];
   for (const o of rows) {
     const items = await new Promise(ok => {
-      db.all('SELECT oi.pid, oi.qty, oi.price, p.name FROM order_items oi LEFT JOIN products p ON oi.pid = p.pid WHERE oi.orderid = ?', [o.orderid], (e, r) => ok(r));
+      db.all('SELECT oi.pid, oi.qty, oi.price, p.name FROM order_items oi LEFT JOIN products p ON oi.pid = p.pid WHERE oi.orderid = ?', [o.orderid], (e, r) => ok(r || []));
     });
     out.push({ ...o, items });
   }
@@ -633,9 +670,9 @@ app.get('/api/orders', requireAdmin, async (req, res) => {
 app.get('/api/my-orders', requireLogin, async (req, res)=>{
   const rows = await new Promise(ok=>{
     db.all(
-      'SELECT * FROM orders WHERE userid=? ORDER BY orderid DESC LIMIT 5',
+      'SELECT orderid, currency, total, status, created_at FROM orders WHERE userid=? ORDER BY orderid DESC LIMIT 5',
       [req.user.userid],
-      (e,r)=>ok(r)
+      (e,r)=>ok(r || [])
     );
   });
 

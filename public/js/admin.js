@@ -257,20 +257,27 @@ async function loadOrders(){
 
   try{
     const orders = await fetchJSON('/api/orders');
-
-    // 只显示已支付订单
-    const paidOrders = orders.filter(o => o.status === 'paid');
-
-    if (paidOrders.length === 0){
-      container.innerHTML = '<p style="color:#777;">No paid orders yet.</p>';
+    if (!Array.isArray(orders) || orders.length === 0){
+      container.innerHTML = '<p style="color:#777;">No orders yet.</p>';
       return;
     }
 
-    container.innerHTML = paidOrders.map(o => `
+    const labelStatus = (s) => {
+      if (s === 'paid') return { text: 'Verified (paid)', color: '#2e7d32' };
+      if (s === 'pending') return { text: 'Created (not verified)', color: '#ef6c00' };
+      if (s === 'failed') return { text: 'Failed', color: '#c62828' };
+      return { text: String(s || 'unknown'), color: '#546e7a' };
+    };
+
+    container.innerHTML = orders.map(o => {
+      const st = labelStatus(o.status);
+      const who = o.user_email ? `User: ${o.user_email}<br>` : '';
+      return `
       <div style="padding:10px;margin-bottom:12px;border:1px solid #ddd;border-radius:6px;">
         <strong>Order #${o.orderid}</strong><br>
+        ${who}
         Total: HK$${o.total}<br>
-        Status: ${o.status}<br>
+        Status: <span style="color:${st.color};font-weight:700;">${st.text}</span><br>
         Created: ${o.created_at}
         <ul>
           ${o.items.map(i =>
@@ -278,7 +285,8 @@ async function loadOrders(){
           ).join('')}
         </ul>
       </div>
-    `).join('');
+    `;
+    }).join('');
   }catch(err){
     container.innerHTML = `<p style="color:#e74c3c;">Failed to load orders</p>`;
   }
