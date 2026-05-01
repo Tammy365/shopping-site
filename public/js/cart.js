@@ -154,6 +154,47 @@ class Cart {
 // 初始化购物车实例
 window.cart = new Cart();
 
+function extractPidFromPathname(pathname = '') {
+  const m = String(pathname).match(/^\/\d+-[^/]+\/(\d+)-[^/]+\/?$/);
+  return m ? m[1] : null;
+}
+function extractPidFromURL(urlStr = '') {
+  try {
+    const u = new URL(urlStr, location.origin);
+    const pidQ = u.searchParams.get('pid');
+    if (pidQ && /^[0-9]+$/.test(pidQ)) return pidQ;
+    const pidP = extractPidFromPathname(u.pathname);
+    if (pidP && /^[0-9]+$/.test(pidP)) return pidP;
+    return null;
+  } catch {
+    return null;
+  }
+}
+function extractPidFromLocation() {
+  const pidQ = new URLSearchParams(location.search).get('pid');
+  if (pidQ && /^[0-9]+$/.test(pidQ)) return pidQ;
+  const pidP = extractPidFromPathname(location.pathname);
+  if (pidP && /^[0-9]+$/.test(pidP)) return pidP;
+  return null;
+}
+
+window.bindProductPageAdd = function(pid) {
+  const root = document.getElementById('product-details');
+  if (!root) return;
+  if (root.__boundAddToCart) return;
+  root.__boundAddToCart = true;
+
+  const btn = root.querySelector('.add-to-cart');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const p = pid && /^[0-9]+$/.test(String(pid)) ? String(pid) : extractPidFromLocation();
+    if (!p) return;
+    const qtyInput = root.querySelector('.quantity');
+    const qty = Number(qtyInput?.value || 1);
+    window.cart.add(p, qty);
+  });
+};
+
 
 // ==========================
 // Checkout 功能（完全干净）
@@ -202,14 +243,21 @@ document.addEventListener('click', (e) => {
   if (!btn) return;
 
   const card = btn.closest('.product');
-  if (!card) return;
+  if (card) {
+    const link = card.querySelector('h3 a');
+    if (!link) return;
+    const pid = extractPidFromURL(link.href);
+    if (!pid) return;
+    const qtyInput = card.querySelector('.quantity');
+    const qty = Number(qtyInput?.value || 1);
+    window.cart.add(pid, qty);
+    return;
+  }
 
-  const link = card.querySelector('h3 a');  
-  if (!link) return;
-
-  const pid = new URL(link.href).searchParams.get('pid');
-  const qtyInput = card.querySelector('.quantity');
+  const root = btn.closest('#product-details') || document.getElementById('product-details');
+  const pid = extractPidFromLocation();
+  if (!root || !pid) return;
+  const qtyInput = root.querySelector('.quantity');
   const qty = Number(qtyInput?.value || 1);
-
   window.cart.add(pid, qty);
 });

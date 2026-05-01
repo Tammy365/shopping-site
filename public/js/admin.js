@@ -14,6 +14,62 @@ async function fetchJSON(url, opts){
   return data;
 }
 
+function isImageFile(file){
+  return file && typeof file.type === 'string' && file.type.startsWith('image/');
+}
+
+function setupImageDrop(form, dropEl, previewEl){
+  if (!form || !dropEl || !previewEl) return;
+  const label = dropEl.closest('label') || form;
+  const input = label.querySelector('input[type="file"][name="image"]');
+  if (!input) return;
+
+  let currentUrl = null;
+  function clearPreview(){
+    if (currentUrl) URL.revokeObjectURL(currentUrl);
+    currentUrl = null;
+    previewEl.src = '';
+    previewEl.style.display = 'none';
+    dropEl.textContent = 'Drag & drop an image here, or click to choose';
+    form.__imageFile = null;
+  }
+
+  function setFile(file){
+    if (!file) { clearPreview(); return; }
+    if (!isImageFile(file)) { alert('Please choose an image file.'); clearPreview(); return; }
+    if (file.size > 10 * 1024 * 1024) { alert('Image too large (max 10MB).'); clearPreview(); return; }
+    if (currentUrl) URL.revokeObjectURL(currentUrl);
+    currentUrl = URL.createObjectURL(file);
+    previewEl.src = currentUrl;
+    previewEl.style.display = 'block';
+    dropEl.textContent = `Selected: ${file.name}`;
+    form.__imageFile = file;
+  }
+
+  dropEl.addEventListener('click', ()=> input.click());
+  input.addEventListener('change', ()=>{
+    const f = input.files && input.files[0] ? input.files[0] : null;
+    setFile(f);
+  });
+
+  dropEl.addEventListener('dragover', (e)=>{
+    e.preventDefault();
+    dropEl.classList.add('dragover');
+  });
+  dropEl.addEventListener('dragleave', ()=>{
+    dropEl.classList.remove('dragover');
+  });
+  dropEl.addEventListener('drop', (e)=>{
+    e.preventDefault();
+    dropEl.classList.remove('dragover');
+    const dt = e.dataTransfer;
+    const file = dt && dt.files && dt.files[0] ? dt.files[0] : null;
+    setFile(file);
+  });
+
+  form.addEventListener('reset', ()=>{ setTimeout(clearPreview, 0); });
+}
+
 let CSRF_TOKEN = null;
 async function ensureCSRF(){
   if (CSRF_TOKEN) return CSRF_TOKEN;
@@ -22,7 +78,7 @@ async function ensureCSRF(){
   return CSRF_TOKEN;
 }
 
-// 顶部状态 + Logout 
+
 async function showLoginStatus(){
   try{
     const me = await fetchJSON('/api/me');
@@ -41,7 +97,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const btn = $('#logout-btn'); if (btn) btn.addEventListener('click', doLogout);
 });
 
-// 渲染分类与商品
+
 async function refreshCategories(){
   const cats = await fetchJSON('/api/categories');
   const catList   = $('#cat-list');
@@ -64,7 +120,7 @@ async function refreshCategories(){
     if (filterSel)filterSel.appendChild(create('option', { value: c.catid, innerText: c.name }));
   }
 
-  // 只绑定一次
+
   if (filterSel && !filterSel.__bound){
     filterSel.addEventListener('change', refreshProducts);
     filterSel.__bound = true;
@@ -126,13 +182,15 @@ if (btnDelCat) btnDelCat.addEventListener('click', async ()=>{
   }catch(err){ alert('Delete category failed:\n' + (err.message||'')); }
 });
 
-// Add Product.把 csrf 也放到 URL query，避免 validateCSRF 先于 multer 时拿不到 body.csrf
+// Add Product
 const formAddProd = $('#form-add-product');
 if (formAddProd) formAddProd.addEventListener('submit', async (e)=>{
   e.preventDefault();
   try{
     const fd = new FormData(e.target);
-    fd.append('csrf', await ensureCSRF()); // 保留
+    const img = e.target.__imageFile;
+    if (img) fd.set('image', img, img.name);
+    fd.append('csrf', await ensureCSRF()); 
     const url = `/api/products?csrf=${encodeURIComponent(await ensureCSRF())}`; 
     const res = await fetch(url, { method:'POST', body: fd });
     let json = null; try{ json = await res.json(); }catch{}
@@ -152,6 +210,8 @@ if (formUpdProd) formUpdProd.addEventListener('submit', async (e)=>{
     for (const [k,v] of Array.from(fd.entries())){
       if (typeof v === 'string' && v.trim() === '') fd.delete(k);
     }
+    const img = e.target.__imageFile;
+    if (img) fd.set('image', img, img.name);
     fd.append('csrf', await ensureCSRF());
     const url = `/api/products/${encodeURIComponent(id)}?csrf=${encodeURIComponent(await ensureCSRF())}`;
     const res = await fetch(url, { method:'PUT', body: fd });
@@ -211,9 +271,10 @@ async function loadOrders(){
   }
 }
 
-// 页面加载时统一初始化
 document.addEventListener('DOMContentLoaded', async ()=>{
   await ensureCSRF();
+  setupImageDrop($('#form-add-product'), $('#add-image-drop'), $('#add-image-preview'));
+  setupImageDrop($('#form-update-product'), $('#upd-image-drop'), $('#upd-image-preview'));
   await refreshCategories();
   await refreshProducts();
   await loadOrders();          

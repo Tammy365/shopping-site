@@ -1,6 +1,12 @@
 // public/js/product-page.js
 function $(sel){ return document.querySelector(sel); }
 function q(name){ return new URLSearchParams(location.search).get(name); }
+function slugPart(s=''){ return encodeURIComponent(String(s).trim().replace(/\s+/g,'-')); }
+function parseSeoProductPath(){
+  const m = location.pathname.match(/^\/(\d+)-[^/]+\/(\d+)-[^/]+\/?$/);
+  if (!m) return null;
+  return { catid: m[1], pid: m[2] };
+}
 
 function escapeHTML(s=''){
   return String(s).replace(/[&<>"']/g, m => ({
@@ -29,20 +35,21 @@ async function renderNav(){
   if (ul){
     ul.innerHTML = [
       `<li><a href="/">Home</a></li>`,
-      ...all.map(c => `<li><a href="/?catid=${c.catid}">${escapeHTML(c.name)}</a></li>`)
+      ...all.map(c => `<li><a href="/${c.catid}-${slugPart(c.name)}/">${escapeHTML(c.name)}</a></li>`)
     ].join('');
   }
   return new Map(cats.map(c => [String(c.catid), c]));
 }
 
-// ---- Render product (redirect home on invalid pid) ----
-async function renderProduct(){
-  const pid = q('pid');
 
-  // 1) 非整数 → 跳首页
+async function renderProduct(){
+  const seo = parseSeoProductPath();
+  const pid = q('pid') || (seo ? seo.pid : null);
+
+
   if (!pid || !isIntLike(pid)) { location.replace('/'); return; }
 
-  // 2) 拉取商品；非 2xx/错误 JSON → 跳首页
+
   let p;
   try{
     const resp = await fetch(`/api/product?pid=${encodeURIComponent(pid)}`);
@@ -53,19 +60,19 @@ async function renderProduct(){
     location.replace('/'); return;
   }
 
-  // 3) 解析 image
+
   let img = null;
   try{
     img = p.image ? (typeof p.image === 'string' ? JSON.parse(p.image) : p.image) : null;
   }catch{ img = null; }
 
-  // 4) 渲染导航并构建面包屑与“Back to Category”
+
   let catsMap = null;
   try{ catsMap = await renderNav(); }catch{}
 
   const catObj  = catsMap ? catsMap.get(String(p.catid)) : null;
   const catName = catObj ? catObj.name : 'Category';
-  const catHref = catObj ? `/?catid=${catObj.catid}` : '/';
+  const catHref = catObj ? `/${catObj.catid}-${slugPart(catObj.name)}/` : '/';
 
   const priceNum = Number(p.price);
   const priceHTML = Number.isFinite(priceNum) ? `HK$${priceNum.toFixed(2)}` : 'HK$—';
@@ -100,8 +107,7 @@ async function renderProduct(){
   if (window.bindProductPageAdd) window.bindProductPageAdd(pid);
 }
 
-// ---- bootstrap ----
+
 (async function init(){
-  try{ await renderNav(); }catch{}
   await renderProduct();
 })();

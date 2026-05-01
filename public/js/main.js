@@ -1,6 +1,16 @@
 // public/js/main.js
 function $(sel){ return document.querySelector(sel); }
 function getQuery(name){ const u = new URLSearchParams(location.search); return u.get(name); }
+function slugPart(s=''){ return encodeURIComponent(String(s).trim().replace(/\s+/g,'-')); }
+function getSeoCatId(){
+  const m = location.pathname.match(/^\/(\d+)-[^/]+\/?$/);
+  return m ? m[1] : null;
+}
+function getActiveCatId(){
+  const q = getQuery('catid');
+  if (q != null && q !== '') return q;
+  return getSeoCatId();
+}
 
 function escapeHTML(s=''){
   return String(s).replace(/[&<>"']/g, m => ({
@@ -30,19 +40,21 @@ async function renderNav(){
   if (ul){
     ul.innerHTML = [
       `<li><a href="/">Home</a></li>`,
-      ...all.map(c => `<li><a href="/?catid=${c.catid}">${escapeHTML(c.name)}</a></li>`)
+      ...all.map(c => `<li><a href="/${c.catid}-${slugPart(c.name)}/">${escapeHTML(c.name)}</a></li>`)
     ].join('');
   }
   return new Map(cats.map(c => [String(c.catid), c]));
 }
 
 // ---- Product card ----
-function productCardNode(p){
+function productCardNode(p, cat){
   // image is a JSON string {small,big}
   let imgJson = null;
   try{ imgJson = p.image ? JSON.parse(p.image) : null; }catch{ imgJson = null; }
 
-  const href = `/product.html?pid=${p.pid}`;
+  const href = (cat && cat.catid)
+    ? `/${cat.catid}-${slugPart(cat.name)}/${p.pid}-${slugPart(p.name || 'product')}`
+    : `/product.html?pid=${p.pid}`;
   const card = document.createElement('div');
   card.className = 'product';
 
@@ -87,7 +99,7 @@ function productCardNode(p){
 async function renderProducts(){
   const list = $('#product-list'); if (!list) return;
 
-  const catidParam = getQuery('catid');
+  const catidParam = getActiveCatId();
 
   // 非整数跳首页
   if (catidParam != null && catidParam !== '' && !isIntLike(catidParam)) {
@@ -96,8 +108,9 @@ async function renderProducts(){
 
   // 整数但不存在跳首页解决 catid 被删后的情况
   let url = '/api/products';
+  let catsMap = null;
   try{
-    const catsMap = await renderNav(); 
+    catsMap = await renderNav();
     if (catidParam != null && catidParam !== '') {
       const exists = catsMap && catsMap.has(String(catidParam));
       if (!exists) { location.replace('/'); return; }
@@ -115,7 +128,7 @@ async function renderProducts(){
     if (!Array.isArray(items)) { location.replace('/'); return; }
 
     list.innerHTML = '';
-    items.forEach(p => list.appendChild(productCardNode(p)));
+    items.forEach(p => list.appendChild(productCardNode(p, catsMap ? catsMap.get(String(p.catid)) : null)));
     if (window.bindAddToCartButtons) window.bindAddToCartButtons(list);
   }catch{
     location.replace('/');
@@ -124,6 +137,5 @@ async function renderProducts(){
 
 // ---- bootstrap ----
 (async function init(){
-  try{ await renderNav(); }catch{}
   await renderProducts();
 })();

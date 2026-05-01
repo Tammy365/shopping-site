@@ -1,10 +1,4 @@
-/**
- * scripts/init-db.js
- * 
- * This script initializes the SQLite database used by the shopping-site.
- * It follows the structure & style of your existing server.js DB usage,
- * and now includes the Phase 5 required tables: orders & order_items.
- */
+
 
 import sqlite3 from 'sqlite3';
 import path from 'path';
@@ -15,15 +9,15 @@ sqlite3.verbose();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-// Database: shop.db (same as server.js)
+
 const dbPath = path.join(__dirname, '..', 'db', 'shop.db');
 const db = new sqlite3.Database(dbPath);
 
-// Enable foreign keys
+
 db.serialize(() => {
   db.run('PRAGMA foreign_keys = ON;');
 
-  // ========== USERS ==========
+
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       userid      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,7 +27,6 @@ db.serialize(() => {
     );
   `);
 
-  // ========== SESSIONS ==========
   db.run(`
     CREATE TABLE IF NOT EXISTS sessions (
       token       TEXT PRIMARY KEY,
@@ -43,7 +36,7 @@ db.serialize(() => {
     );
   `);
 
-  // ========== CATEGORIES ==========
+
   db.run(`
     CREATE TABLE IF NOT EXISTS categories (
       catid       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +44,7 @@ db.serialize(() => {
     );
   `);
 
-  // ========== PRODUCTS ==========
+
   db.run(`
     CREATE TABLE IF NOT EXISTS products (
       pid         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,12 +58,7 @@ db.serialize(() => {
     );
   `);
 
-  // ========================================
-  // 🌟 PHASE 5 NEW TABLES
-  // ========================================
 
-  // ========== ORDERS ==========
-  // Stores ONE order record per checkout
   db.run(`
     CREATE TABLE IF NOT EXISTS orders (
       orderid     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,8 +74,7 @@ db.serialize(() => {
     );
   `);
 
-  // ========== ORDER ITEMS ==========
-  // Stores product list per order
+
   db.run(`
     CREATE TABLE IF NOT EXISTS order_items (
       orderid     INTEGER,

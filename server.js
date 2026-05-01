@@ -263,6 +263,13 @@ app.get('/admin.html', requireAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+app.get('/:catid(\\d+)-:catName/:pid(\\d+)-:prodName', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'product.html'));
+});
+app.get('/:catid(\\d+)-:catName', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // -------- 静态资源 --------
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -504,7 +511,6 @@ app.post('/api/checkout', requireLogin, async (req, res) => {
 
   const digest = crypto.createHash('sha256').update(toHash).digest('hex');
 
-  // 写入 orders
   const orderid = await new Promise(ok => {
     db.run(
       'INSERT INTO orders(userid, digest, salt, currency, total, status) VALUES (?,?,?,?,?,?)',
@@ -513,7 +519,6 @@ app.post('/api/checkout', requireLogin, async (req, res) => {
     );
   });
 
-  // 写入 order_items
   for (const i of list) {
     db.run(
       'INSERT INTO order_items(orderid, pid, qty, price) VALUES (?,?,?,?)',
@@ -521,7 +526,6 @@ app.post('/api/checkout', requireLogin, async (req, res) => {
     );
   }
 
-  // 前端需要跳转至 pay.html?orderid=xxx
   res.json({
     success: true,
     orderid,
@@ -530,7 +534,7 @@ app.post('/api/checkout', requireLogin, async (req, res) => {
   });
 });
 
-// ========== PayPal Create Order ==========
+
 app.post('/api/paypal/create', requireLogin, async (req, res) => {
   const { orderid } = req.body;
 
@@ -543,7 +547,7 @@ app.post('/api/paypal/create', requireLogin, async (req, res) => {
   });
   if (!row) return res.status(400).json({ error: 'Order not found' });
 
-  // ✅ 动态生成当前服务器地址
+
 
   const host = `${req.protocol}://${req.get('host')}`;
 
@@ -575,7 +579,7 @@ app.post('/api/paypal/create', requireLogin, async (req, res) => {
 });
 
 
-// ========== PayPal Capture ==========
+
 app.get('/api/paypal/capture', async (req, res) => {
   const { orderid, token } = req.query;
 
@@ -588,7 +592,7 @@ app.get('/api/paypal/capture', async (req, res) => {
     db.all('SELECT * FROM order_items WHERE orderid=?', [orderid], (e, r) => ok(r));
   });
 
-  // 重建 digest
+
   const toHash = [
     order.currency,
     'merchant@example.com',
@@ -608,7 +612,6 @@ app.get('/api/paypal/capture', async (req, res) => {
   return res.redirect('/');
 });
 
-// ========== Admin: All Orders ==========
 app.get('/api/orders', requireAdmin, async (req, res) => {
   const rows = await new Promise(ok => {
     db.all('SELECT * FROM orders ORDER BY orderid DESC', [], (e, r) => ok(r));
@@ -626,7 +629,7 @@ app.get('/api/orders', requireAdmin, async (req, res) => {
 });
 
 
-// ========== User: My Recent Orders ==========
+
 app.get('/api/my-orders', requireLogin, async (req, res)=>{
   const rows = await new Promise(ok=>{
     db.all(
@@ -652,12 +655,12 @@ app.get('/api/my-orders', requireLogin, async (req, res)=>{
   res.json(out);
 });
 
-// -------- 主页 --------
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// -------- 错误处理 --------
+
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'Internal error' });
