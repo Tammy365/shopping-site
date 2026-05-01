@@ -18,11 +18,14 @@ function isImageFile(file){
   return file && typeof file.type === 'string' && file.type.startsWith('image/');
 }
 
-function setupImageDrop(form, dropEl, previewEl){
+function setupImageDrop(form, dropEl, previewEl, wrapEl, removeEl){
   if (!form || !dropEl || !previewEl) return;
   const label = dropEl.closest('label') || form;
   const input = label.querySelector('input[type="file"][name="image"]');
   if (!input) return;
+
+  wrapEl = wrapEl || previewEl.closest('.preview-wrap');
+  removeEl = removeEl || (wrapEl ? wrapEl.querySelector('.thumb-remove') : null);
 
   let currentUrl = null;
   function clearPreview(){
@@ -30,8 +33,10 @@ function setupImageDrop(form, dropEl, previewEl){
     currentUrl = null;
     previewEl.src = '';
     previewEl.style.display = 'none';
+    if (wrapEl) wrapEl.style.display = 'none';
     dropEl.textContent = 'Drag & drop an image here, or click to choose';
     form.__imageFile = null;
+    input.value = '';
   }
 
   function setFile(file){
@@ -42,11 +47,19 @@ function setupImageDrop(form, dropEl, previewEl){
     currentUrl = URL.createObjectURL(file);
     previewEl.src = currentUrl;
     previewEl.style.display = 'block';
+    if (wrapEl) wrapEl.style.display = 'block';
     dropEl.textContent = `Selected: ${file.name}`;
     form.__imageFile = file;
   }
 
   dropEl.addEventListener('click', ()=> input.click());
+  if (removeEl) {
+    removeEl.addEventListener('click', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      clearPreview();
+    });
+  }
   input.addEventListener('change', ()=>{
     const f = input.files && input.files[0] ? input.files[0] : null;
     setFile(f);
@@ -273,8 +286,8 @@ async function loadOrders(){
 
 document.addEventListener('DOMContentLoaded', async ()=>{
   await ensureCSRF();
-  setupImageDrop($('#form-add-product'), $('#add-image-drop'), $('#add-image-preview'));
-  setupImageDrop($('#form-update-product'), $('#upd-image-drop'), $('#upd-image-preview'));
+  setupImageDrop($('#form-add-product'), $('#add-image-drop'), $('#add-image-preview'), $('#add-image-wrap'), $('#add-image-remove'));
+  setupImageDrop($('#form-update-product'), $('#upd-image-drop'), $('#upd-image-preview'), $('#upd-image-wrap'), $('#upd-image-remove'));
   await refreshCategories();
   await refreshProducts();
   await loadOrders();          
