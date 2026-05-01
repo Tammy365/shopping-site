@@ -265,6 +265,7 @@ async function loadOrders(){
     const labelStatus = (s) => {
       if (s === 'paid') return { text: 'Verified (paid)', color: '#2e7d32' };
       if (s === 'pending') return { text: 'Created (not verified)', color: '#ef6c00' };
+      if (s === 'cancelled') return { text: 'Cancelled', color: '#546e7a' };
       if (s === 'failed') return { text: 'Failed', color: '#c62828' };
       return { text: String(s || 'unknown'), color: '#546e7a' };
     };

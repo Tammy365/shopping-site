@@ -670,7 +670,7 @@ app.get('/api/orders', requireAdmin, async (req, res) => {
 app.get('/api/my-orders', requireLogin, async (req, res)=>{
   const rows = await new Promise(ok=>{
     db.all(
-      'SELECT orderid, currency, total, status, created_at FROM orders WHERE userid=? ORDER BY orderid DESC LIMIT 5',
+      'SELECT orderid, currency, total, status, created_at FROM orders WHERE userid=? ORDER BY orderid DESC',
       [req.user.userid],
       (e,r)=>ok(r || [])
     );
@@ -691,6 +691,104 @@ app.get('/api/my-orders', requireLogin, async (req, res)=>{
 
   res.json(out);
 });
+
+app.put('/api/my-orders/:orderid',
+  requireLogin, validateCSRF,
+  param('orderid').isInt(),
+  handleValidationErrors,
+  async (req, res) => {
+    const orderid = Number(req.params.orderid);
+    const items = req.body?.items;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Empty items' });
+    }
+
+    for (const it of items) {
+      if (!Number.isInteger(it.pid) || !Number.isInteger(it.qty) || it.qty <= 0) {
+        return res.status(400).json({ error: 'Invalid item' });
+      }
+    }
+
+    const order = await new Promise(ok => {
+      db.get(
+        'SELECT orderid, userid, currency, status FROM orders WHERE orderid=?',
+        [orderid],
+        (e, r) => ok(r)
+      );
+    });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.userid !== req.user.userid) return res.status(403).json({ error: 'Forbidden' });
+    if (order.status === 'paid') return res.status(400).json({ error: 'Order already paid' });
+    if (order.status === 'cancelled') return res.status(400).json({ error: 'Order cancelled' });
+
+    const getAsync = (sql, params) => new Promise((resolve, reject) => {
+      db.get(sql, params, (err, row) => err ? reject(err) : resolve(row));
+    });
+    const runAsync = (sql, params) => new Promise((resolve, reject) => {
+      db.run(sql, params, function(err) { err ? reject(err) : resolve(this); });
+    });
+
+    try {
+      let total = 0;
+      const priced = [];
+      for (const it of items) {
+        const row = await getAsync('SELECT pid, price FROM products WHERE pid=?', [it.pid]);
+        if (!row) return res.status(400).json({ error: 'Product not found' });
+        total += Number(row.price) * it.qty;
+        priced.push({ pid: row.pid, qty: it.qty, price: Number(row.price) });
+      }
+
+      const merchant = 'merchant@example.com';
+      const salt = crypto.randomBytes(16).toString('hex');
+      const toHash = [
+        order.currency,
+        merchant,
+        salt,
+        ...priced.map(i => `${i.pid}:${i.qty}:${i.price}`),
+        total.toFixed(2)
+      ].join('|');
+      const digest = crypto.createHash('sha256').update(toHash).digest('hex');
+
+      await runAsync('BEGIN', []);
+      await runAsync('DELETE FROM order_items WHERE orderid=?', [orderid]);
+      for (const i of priced) {
+        await runAsync('INSERT INTO order_items(orderid, pid, qty, price) VALUES (?,?,?,?)', [orderid, i.pid, i.qty, i.price]);
+      }
+      await runAsync(
+        'UPDATE orders SET digest=?, salt=?, total=?, status=? WHERE orderid=?',
+        [digest, salt, total, 'pending', orderid]
+      );
+      await runAsync('COMMIT', []);
+
+      res.json({ success: true, orderid, total });
+    } catch (e) {
+      db.run('ROLLBACK', [], () => {});
+      res.status(500).json({ error: 'DB error' });
+    }
+  }
+);
+
+app.post('/api/my-orders/:orderid/cancel',
+  requireLogin, validateCSRF,
+  param('orderid').isInt(),
+  handleValidationErrors,
+  (req, res) => {
+    const orderid = Number(req.params.orderid);
+    db.get('SELECT orderid, userid, status FROM orders WHERE orderid=?', [orderid], (e, order) => {
+      if (e) return res.status(500).json({ error: 'DB error' });
+      if (!order) return res.status(404).json({ error: 'Order not found' });
+      if (order.userid !== req.user.userid) return res.status(403).json({ error: 'Forbidden' });
+      if (order.status === 'paid') return res.status(400).json({ error: 'Order already paid' });
+      if (order.status === 'cancelled') return res.json({ success: true });
+
+      db.run('UPDATE orders SET status=? WHERE orderid=?', ['cancelled', orderid], (e2) => {
+        if (e2) return res.status(500).json({ error: 'DB error' });
+        res.json({ success: true });
+      });
+    });
+  }
+);
 
 
 app.get('/', (req, res) => {
