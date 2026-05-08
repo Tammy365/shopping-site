@@ -11,7 +11,7 @@
   const json = await res.json();
 
   if (!json || !json.links) {
-    alert('PayPal request failed');
+    alert(json?.error || 'PayPal request failed');
     return;
   }
 

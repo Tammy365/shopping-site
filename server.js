@@ -551,6 +551,7 @@ app.post('/api/paypal/create',
     });
     if (!row) return res.status(400).json({ error: 'Order not found' });
     if (row.status === 'paid') return res.status(400).json({ error: 'Order already paid' });
+    if (row.status === 'cancelled') return res.status(400).json({ error: 'Order cancelled' });
     if (row.userid !== req.user.userid && !req.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
 
     const host = `${req.protocol}://${req.get('host')}`;
@@ -599,6 +600,7 @@ app.get('/api/paypal/capture', async (req, res) => {
   });
   if (!order) return res.status(404).send('Order not found');
   if (order.status === 'paid') return res.redirect('/');
+  if (order.status === 'cancelled') return res.redirect('/');
 
   const access = await paypalGetToken();
   const captureRes = await fetch(`${PAYPAL_API}/v2/checkout/orders/${encodeURIComponent(paypalOrderId)}/capture`, {

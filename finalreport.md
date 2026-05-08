@@ -491,6 +491,53 @@ Where:
 - 截图 2：拖一个非图片（如 .txt/.pdf）进 dropzone，弹出提示并被拒绝
 - 截图 3：点击预览右上角 ×，预览消失（可再截图提交表单后服务器未更新图片作为佐证，选做）
 
+### 6A. Extension 3 — Complete Order Management for Users (View / Pay again / Modify / Cancel)
+Feature:
+- The user can view **all** his/her orders (not only the latest few).
+- For **unpaid** orders, the user can:
+  - Pay again (resume payment for the same order)
+  - Modify the order items/quantities
+  - Cancel the order
+
+User experience (concrete examples in this project):
+- My Orders page: `/my-orders.html` shows all orders and renders action buttons for unpaid orders:
+  - “Pay again” → redirects to `/pay.html?orderid=...`
+  - “Modify” → opens an inline edit panel to adjust item quantities
+  - “Cancel” → marks the order as `cancelled`
+
+Backend APIs (concrete endpoints):
+- `GET /api/my-orders` (requires login)
+  - returns all orders of the current user, each with its `items`
+- `PUT /api/my-orders/:orderid` (requires login + CSRF)
+  - updates an unpaid order’s items and quantities
+  - server re-computes total using live DB prices, and re-generates `(salt, digest)` for integrity
+- `POST /api/my-orders/:orderid/cancel` (requires login + CSRF)
+  - cancels an unpaid order (paid orders cannot be cancelled)
+
+Security/consistency notes:
+- Authorization: user can only modify/cancel orders where `orders.userid` equals the logged-in user.
+- Integrity: after modification, the server recalculates totals from DB and updates digest fields to prevent client-side tampering.
+- CSRF: modify/cancel endpoints require the existing CSRF token mechanism (`/api/csrf` + `validateCSRF`).
+
+Where it is implemented:
+- Frontend:
+  - `public/my-orders.html` (UI + buttons)
+  - `public/js/my-orders.js` (fetch, render, modify, cancel, pay again)
+- Backend:
+  - `GET /api/my-orders`, `PUT /api/my-orders/:orderid`, `POST /api/my-orders/:orderid/cancel` in `server.js`
+
+**[TODO: Screenshot]** My Orders page showing multiple orders (paid + unpaid) and the action buttons on an unpaid order.  
+**[TODO: Screenshot]** Click “Modify” → edit panel appears; change qty and “Save changes” → order total/items update after refresh.  
+**[TODO: Screenshot]** Click “Cancel” on an unpaid order → status becomes `cancelled` (and buttons disappear).  
+**[TODO: Screenshot]** Click “Pay again” on an unpaid order → redirected to `/pay.html?orderid=...` and can complete PayPal payment.
+
+中文截图指引：
+- 截图 1：登录普通用户后访问 https://s61.iems5718.iecuhk.cc/my-orders.html
+  - 要求：页面里至少能看到 2 笔订单（建议一笔 paid、一笔 pending），并且 pending 订单卡片上有 Pay again / Modify / Cancel 三个按钮。
+- 截图 2：点击 Modify 后截图（能看到编辑面板展开、每个商品旁边有数量输入框），修改数量后点击 Save changes，再刷新页面截一张证明 items/total 已更新。
+- 截图 3：点击 Cancel 后截图（该订单状态变为 cancelled；并且该订单不再显示 Modify/Pay again 按钮）。
+- 截图 4：点击 Pay again 后截图（地址栏跳到 `/pay.html?orderid=...`），以及完成 PayPal 后回到站点再截图订单变成 paid（可与 Phase 5 截图复用）。
+
 ---
 
 ## Appendix — Notes / Known Limitations (if any)
