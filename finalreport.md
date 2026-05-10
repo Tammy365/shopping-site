@@ -589,6 +589,54 @@ Where it is implemented:
 **[TODO: Screenshot]** Payment page with tampered URL `/pay.html?orderid=<cancelled>` showing error “Order cancelled”.  
 **[TODO: Screenshot]** Admin panel showing the same order still `cancelled` (not `paid`).
 
+### 7.3 Vulnerability: Paying other users’ unpaid orders by guessing/changing `orderid`
+
+**Attack scenario**
+- The payment URL is guessable and user-controlled: `https://s61.iems5718.iecuhk.cc/pay.html?orderid=<number>`.
+- A malicious user can change `orderid` to an unpaid order created by another user (status `pending`) and attempt to pay it.
+- Before the fix, the backend payment flow did not fully enforce “order ownership” at the page level, so the attacker could reach the PayPal flow for someone else’s order.
+
+**Impact**
+- Horizontal privilege escalation (IDOR / broken access control):
+  - a user can perform actions (payment verification) on resources owned by other users.
+- Business impact:
+  - wrong user pays the wrong order, and the order lifecycle becomes inconsistent.
+
+**Root cause**
+- Missing/insufficient authorization checks for payment-related entry points:
+  - `GET /pay.html` did not verify the order belongs to the logged-in user.
+  - Some PayPal callback paths were not protected by `requireLogin` + ownership check.
+
+### 7.4 Fix: Enforce order ownership for all payment entry points (IDOR prevention)
+
+**Mitigation approach**
+- Require authentication and validate authorization on all payment-related endpoints:
+  1) Protect the payment page:
+     - `GET /pay.html` now requires login and validates:
+       - `orders.userid === current user`
+       - `orders.status === 'pending'` (only unpaid orders are payable)
+  2) Protect PayPal create:
+     - `POST /api/paypal/create` now rejects any order where `orders.userid !== current user` (HTTP 403).
+  3) Protect PayPal capture:
+     - `GET /api/paypal/capture` now requires login and rejects when `orders.userid !== current user` (HTTP 403).
+
+**Concrete implementation (code references)**
+- `server.js`:
+  - `GET /pay.html`: requireLogin + ownership + status checks
+  - `POST /api/paypal/create`: ownership check
+  - `GET /api/paypal/capture`: requireLogin + ownership check
+
+**How to verify the fix**
+1) User A creates an unpaid order (status `pending`), note its `orderid`.
+2) User B logs in and manually opens: `/pay.html?orderid=<UserA_orderid>`.
+3) Expected result:
+   - Access is denied (HTTP 403) or redirected away; User B cannot reach PayPal for User A’s order.
+4) Confirm in admin panel that User A’s order is still `pending` until User A pays it.
+
+**[TODO: Screenshot]** User A’s My Orders showing an unpaid order (note orderid).  
+**[TODO: Screenshot]** User B tries `/pay.html?orderid=<UserA_orderid>` and gets Forbidden/redirect (show address bar).  
+**[TODO: Screenshot]** Admin panel still shows the order as `pending` (not paid) after User B’s attempt.
+
 ## Appendix — Notes / Known Limitations (if any)
 
 1) PayPal credentials
