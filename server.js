@@ -263,6 +263,24 @@ app.get('/admin.html', requireAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+app.get('/pay.html', requireLogin,
+  query('orderid').isInt(),
+  handleValidationErrors,
+  (req, res) => {
+    const orderid = Number(req.query.orderid);
+    db.get(
+      'SELECT orderid, userid, status FROM orders WHERE orderid=?',
+      [orderid],
+      (err, row) => {
+        if (err || !row) return res.redirect('/my-orders.html');
+        if (row.userid !== req.user.userid) return res.status(403).send('Forbidden');
+        if (row.status !== 'pending') return res.redirect('/my-orders.html');
+        res.sendFile(path.join(__dirname, 'public', 'pay.html'));
+      }
+    );
+  }
+);
+
 app.get('/:catid(\\d+)-:catName/:pid(\\d+)-:prodName', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'product.html'));
 });
@@ -552,7 +570,7 @@ app.post('/api/paypal/create',
     if (!row) return res.status(400).json({ error: 'Order not found' });
     if (row.status === 'paid') return res.status(400).json({ error: 'Order already paid' });
     if (row.status === 'cancelled') return res.status(400).json({ error: 'Order cancelled' });
-    if (row.userid !== req.user.userid && !req.user.is_admin) return res.status(403).json({ error: 'Forbidden' });
+    if (row.userid !== req.user.userid) return res.status(403).json({ error: 'Forbidden' });
 
     const host = `${req.protocol}://${req.get('host')}`;
     const token = await paypalGetToken();
@@ -585,7 +603,7 @@ app.post('/api/paypal/create',
 
 
 
-app.get('/api/paypal/capture', async (req, res) => {
+app.get('/api/paypal/capture', requireLogin, async (req, res) => {
   const orderid = Number(req.query?.orderid);
   const paypalOrderId = String(req.query?.token || '');
 
@@ -599,6 +617,7 @@ app.get('/api/paypal/capture', async (req, res) => {
     );
   });
   if (!order) return res.status(404).send('Order not found');
+  if (order.userid !== req.user.userid) return res.status(403).send('Forbidden');
   if (order.status === 'paid') return res.redirect('/');
   if (order.status === 'cancelled') return res.redirect('/');
 

@@ -540,6 +540,55 @@ Where it is implemented:
 
 ---
 
+## 7) Phase 7 — Attacking & Fixes (Security Hardening)
+
+### 7.1 Vulnerability: Paying a cancelled order by tampering `orderid` in the payment page
+
+**Attack scenario**
+- The payment page (`/pay.html`) uses the `orderid` query parameter (e.g., `/pay.html?orderid=123`) to request PayPal order creation on the backend.
+- An attacker (or a normal user) can manually change the URL `orderid` to point to a **cancelled** order (e.g., `/pay.html?orderid=456` where order #456 has status `cancelled`).
+- Before the fix, the backend would still allow PayPal order creation/capture flow for that cancelled order, which effectively makes a cancelled order payable again.
+
+**Impact**
+- Business logic violation: cancelled orders should be final and must not be payable.
+- Potential integrity issues for the order lifecycle (cancelled → paid).
+
+**Root cause**
+- Missing server-side state validation for cancelled orders in the payment endpoints:
+  - `POST /api/paypal/create` did not block `status = cancelled`.
+  - `GET /api/paypal/capture` did not stop processing for `status = cancelled`.
+
+### 7.2 Fix: Server-side enforcement of order state (cancelled orders cannot be paid)
+
+**Mitigation approach**
+- Enforce the order status rules on the **server side** (never rely on frontend UI):
+  1) Block PayPal creation for cancelled orders:
+     - `POST /api/paypal/create` returns HTTP 400 with `{ error: 'Order cancelled' }` when `orders.status = 'cancelled'`.
+  2) Block PayPal capture for cancelled orders:
+     - `GET /api/paypal/capture` immediately stops/redirects if `orders.status = 'cancelled'`.
+  3) Improve user feedback on the payment page:
+     - `public/js/pay.js` now shows the backend error message (e.g., “Order cancelled”) instead of a generic “PayPal request failed”.
+
+**Concrete implementation (code references)**
+- Backend checks:
+  - `server.js`:
+    - `POST /api/paypal/create`: reject `status === 'cancelled'`
+    - `GET /api/paypal/capture`: stop if `status === 'cancelled'`
+- Frontend message:
+  - `public/js/pay.js`: display `json.error` when present
+
+**How to verify the fix**
+1) Create an order, then cancel it from My Orders (`/my-orders.html`) so its status becomes `cancelled`.
+2) Manually open: `/pay.html?orderid=<CANCELLED_ORDER_ID>`
+3) Expected result:
+   - The site should not redirect you to PayPal.
+   - The page should show an error like “Order cancelled”.
+4) Verify in admin panel (`/admin.html`) that the cancelled order never becomes `paid`.
+
+**[TODO: Screenshot]** A cancelled order shown in My Orders (status `cancelled`).  
+**[TODO: Screenshot]** Payment page with tampered URL `/pay.html?orderid=<cancelled>` showing error “Order cancelled”.  
+**[TODO: Screenshot]** Admin panel showing the same order still `cancelled` (not `paid`).
+
 ## Appendix — Notes / Known Limitations (if any)
 
 1) PayPal credentials
